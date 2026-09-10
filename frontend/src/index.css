@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 222 47% 11%;
+    --primary: 222 47% 11%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 72% 51%;
+    --radius: 0.6rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  }
+}
+
+/* Markdown 渲染样式 */
+.md-body {
+  @apply text-sm leading-relaxed;
+}
+.md-body p {
+  @apply my-2;
+}
+.md-body ul {
+  @apply my-2 list-disc pl-5;
+}
+.md-body ol {
+  @apply my-2 list-decimal pl-5;
+}
+.md-body li {
+  @apply my-1;
+}
+.md-body code {
+  @apply rounded bg-muted px-1.5 py-0.5 text-[13px];
+}
+.md-body pre {
+  @apply my-3 overflow-x-auto rounded-lg bg-muted p-3;
+}
+.md-body pre code {
+  @apply bg-transparent p-0;
+}
+.md-body h1,
+.md-body h2,
+.md-body h3 {
+  @apply mb-2 mt-4 font-semibold;
+}
+.md-body h1 {
+  @apply text-lg;
+}
+.md-body h2 {
+  @apply text-base;
+}
+.md-body h3 {
+  @apply text-sm;
+}
+.md-body a {
+  @apply text-blue-600 underline underline-offset-2;
+}
+.md-body blockquote {
+  @apply my-2 border-l-2 border-border pl-3 text-muted-foreground;
+}
+.md-body strong {
+  @apply font-semibold;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  @apply rounded bg-border;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

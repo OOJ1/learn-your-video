@@ -1,0 +1,22 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+frontend/dist/
+
+# 运行数据（视频/音频/字幕/向量库/落盘 JSON）体积大且含个人内容，不入库
+backend/data/
+logs/
+
+# 敏感配置（含 API Key，绝不入库）
+backend/.env
+.env
+
+# IDE / 系统
+.idea/
+.vscode/
+*.lnk
+Thumbs.db

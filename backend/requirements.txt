@@ -1,0 +1,34 @@
+# ================= 你的学习搭子 · 后端依赖 =================
+# 基础 Web
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic-settings
+python-dotenv
+
+# LLM / Embedding（openai SDK 同时服务 Ollama 的 /v1 兼容端点）
+openai
+tiktoken
+fastembed
+
+# 文本处理
+langchain-text-splitters
+pypdf
+
+# 缓存
+redis
+
+# 向量库（P3）
+chromadb
+
+# 联网搜索（P4）
+tavily-python
+ddgs
+
+# 视频/音频（P3）
+faster-whisper
+imageio-ffmpeg
+
+# 备注：
+# - 无 NVIDIA GPU 时 faster-whisper 自动走 CPU + int8
+# - 国内首次下载本地 embedding 模型走 HF_ENDPOINT=https://hf-mirror.com（已固化在代码中）
