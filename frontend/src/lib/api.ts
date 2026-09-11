@@ -194,8 +194,14 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url, max_height }),
     }),
+  grabJobs: () =>
+    req<{ ok: boolean; items: Record<string, any>[] }>("/api/grabber/jobs"),
   grabJob: (jobId: string) =>
     req<{ ok: boolean; job: Record<string, any> }>(`/api/grabber/jobs/${jobId}`),
+  grabDelete: (jobId: string) =>
+    req<{ ok: boolean; removed: number }>(`/api/grabber/jobs/${jobId}`, {
+      method: "DELETE",
+    }),
   grabFileUrl: (jobId: string) => `${BASE}/api/grabber/jobs/${jobId}/file`,
   grabImport: (jobId: string, hotwords = "") =>
     req<{ ok: boolean; doc: Doc }>(`/api/grabber/jobs/${jobId}/import`, {

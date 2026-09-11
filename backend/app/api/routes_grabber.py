@@ -63,6 +63,19 @@ def job(job_id: str):
     return {"ok": True, "job": j}
 
 
+@router.delete("/jobs/{job_id}")
+def delete_job(job_id: str):
+    """删除下载记录并清理它的文件。
+
+    下载的文件会一直留在 data/grabbed/ 里，之前没有任何删除入口，只能越积越多。
+    已导入知识库的副本在 uploads/，不受影响。
+    """
+    r = grabber.delete_job(job_id)
+    if not r.get("ok"):
+        raise HTTPException(404, "任务不存在")
+    return {"ok": True, "removed": r.get("removed", 0)}
+
+
 @router.get("/jobs/{job_id}/file")
 def job_file(job_id: str):
     """把下载好的视频返回给浏览器（触发另存为）"""

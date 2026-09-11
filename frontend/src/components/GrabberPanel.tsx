@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Download as DownloadIcon,
   Link2,
@@ -7,6 +7,8 @@ import {
   AlertTriangle,
   Sparkles,
   ArrowRight,
+  History,
+  Trash2,
 } from "lucide-react";
 import { api, type Doc } from "../lib/api";
 import { Button, Input } from "./ui";
@@ -18,9 +20,16 @@ type Job = {
   progress: number;
   message: string;
   filename: string;
+  title?: string;
   size: number;
   duration: number;
   error?: string;
+};
+
+/** 文件名形如 {job_id}_{标题}.mp4，展示时把 job_id 前缀去掉 */
+const displayName = (j: Job) => {
+  const n = j.filename || j.title || "视频";
+  return n.startsWith(`${j.id}_`) ? n.slice(j.id.length + 1) : n;
 };
 
 /** 视频抓取模块：把网上视频下载到本地（自动转成可直接播放的格式） */
@@ -31,6 +40,21 @@ export function GrabberPanel({ onImported }: { onImported?: (d: Doc) => void }) 
   const [err, setErr] = useState("");
   const [job, setJob] = useState<Job | null>(null);
   const [importing, setImporting] = useState(false);
+  const [history, setHistory] = useState<Job[]>([]);
+  const [busyId, setBusyId] = useState("");
+
+  const loadHistory = async () => {
+    try {
+      const r = await api.grabJobs();
+      setHistory((r.items || []) as Job[]);
+    } catch {
+      // 历史列表失败不影响下载主流程，静默忽略
+    }
+  };
+
+  useEffect(() => {
+    loadHistory();
+  }, []);
 
   const start = async () => {
     if (!url.trim()) return;
@@ -44,6 +68,7 @@ export function GrabberPanel({ onImported }: { onImported?: (d: Doc) => void }) 
       setErr(e?.message || "下载失败");
     } finally {
       setBusy(false);
+      await loadHistory();
     }
   };
 
@@ -71,6 +96,43 @@ export function GrabberPanel({ onImported }: { onImported?: (d: Doc) => void }) 
       setImporting(false);
     }
   };
+
+  const importHistory = async (jobId: string) => {
+    setBusyId(jobId);
+    setErr("");
+    try {
+      const r = await api.grabImport(jobId);
+      onImported?.(r.doc);
+      await loadHistory();
+    } catch (e: any) {
+      setErr(e?.message || "导入失败");
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  const remove = async (j: Job) => {
+    const name = displayName(j);
+    const ok = window.confirm(
+      `删除「${name}」？\n\n会同时删除已下载的视频文件（${j.size ? fmtBytes(j.size) : "未知大小"}）。\n` +
+        `已导入知识库的副本不受影响。`
+    );
+    if (!ok) return;
+    setBusyId(j.id);
+    setErr("");
+    try {
+      await api.grabDelete(j.id);
+      await loadHistory();
+    } catch (e: any) {
+      setErr(e?.message || "删除失败");
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  // 当前这次下载单独用进度卡片展示，历史列表里就不重复出现了
+  const others = history.filter((j) => j.id !== job?.id);
+  const totalBytes = others.reduce((s, j) => s + (j.size || 0), 0);
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-6">
@@ -150,7 +212,7 @@ export function GrabberPanel({ onImported }: { onImported?: (d: Doc) => void }) 
           </p>
         )}
 
-        {/* 进度 */}
+        {/* 当前进度 */}
         {job && (
           <div className="space-y-3 rounded-xl border p-4">
             <div className="flex items-center gap-2 text-xs">
@@ -161,9 +223,7 @@ export function GrabberPanel({ onImported }: { onImported?: (d: Doc) => void }) 
               ) : (
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
               )}
-              <span className="font-medium">
-                {job.filename || "视频"}
-              </span>
+              <span className="font-medium">{displayName(job)}</span>
               <span className="flex-1" />
               <span className="text-muted-foreground">{job.progress}%</span>
             </div>
@@ -199,6 +259,69 @@ export function GrabberPanel({ onImported }: { onImported?: (d: Doc) => void }) 
                 </Button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* 历史下载：下载的文件会一直留在本地，这里可以随时取用或清理 */}
+        {others.length > 0 && (
+          <div className="rounded-xl border">
+            <div className="flex items-center gap-1.5 border-b px-4 py-2.5">
+              <History className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs font-semibold">历史下载</span>
+              <span className="text-[11px] text-muted-foreground">
+                {others.length} 个 · 占用 {fmtBytes(totalBytes)}
+              </span>
+            </div>
+            <div className="divide-y">
+              {others.map((j) => (
+                <div key={j.id} className="flex items-center gap-2 px-4 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-medium">{displayName(j)}</p>
+                    <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                      {j.status === "done"
+                        ? `${fmtBytes(j.size || 0)}${
+                            j.duration ? ` · ${fmtTime(j.duration)}` : ""
+                          }`
+                        : j.message}
+                    </p>
+                  </div>
+                  {j.status === "done" && (
+                    <>
+                      <a
+                        href={api.grabFileUrl(j.id)}
+                        title="保存到本地"
+                        className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-input bg-background px-2.5 text-xs font-medium transition-colors hover:bg-accent"
+                      >
+                        <DownloadIcon className="h-3.5 w-3.5" />
+                        保存
+                      </a>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        title="导入知识库并总结"
+                        onClick={() => importHistory(j.id)}
+                        disabled={busyId === j.id}
+                      >
+                        {busyId === j.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : null}
+                        导入
+                      </Button>
+                    </>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    title="删除记录并移除文件"
+                    onClick={() => remove(j)}
+                    disabled={busyId === j.id}
+                    className="text-muted-foreground hover:text-red-600"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>

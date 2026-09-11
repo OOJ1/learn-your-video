@@ -138,6 +138,51 @@ def _set(job_id: str, **kw: Any) -> None:
             _dump()
 
 
+def delete_job(job_id: str) -> dict[str, Any]:
+    """删除任务记录，并删掉它留在 grabbed/ 里的文件。
+
+    只允许删 grabbed/ 目录下的普通文件 —— 导入知识库时是**复制**到 uploads/ 的，
+    这里绝不能碰到那边（否则会删掉用户的知识库视频）。
+
+    返回 {"ok": 记录是否存在, "removed": 实际删除的文件数}。
+    """
+    _ensure_loaded()
+    with _lock:
+        job = _jobs.pop(job_id, None)
+        if job is not None:
+            _dump()
+    if job is None:
+        return {"ok": False, "removed": 0}
+
+    removed = 0
+    try:
+        root = grab_dir().resolve()
+        cands: list[Path] = []
+        if job.get("path"):
+            cands.append(Path(job["path"]))
+        # 兜底：失败的任务可能没写 path，或在 grabbed/ 留下 .part 等残留
+        cands.extend(root.glob(f"{job_id}_*"))
+
+        seen: set[Path] = set()
+        for c in cands:
+            try:
+                f = c.resolve()
+            except OSError:
+                continue
+            if f in seen or not f.is_file():
+                continue
+            seen.add(f)
+            if f.parent != root:      # 只删 grabbed/ 内的文件，绝不外溢
+                logger.warning("跳过 grabbed/ 之外的文件：%s", f)
+                continue
+            f.unlink()
+            removed += 1
+    except Exception as e:
+        logger.warning("删除下载文件失败 job=%s: %s", job_id, e)
+    logger.info("已删除下载任务 %s（文件 %d 个）", job_id, removed)
+    return {"ok": True, "removed": removed}
+
+
 def probe_video_codec(path: Path) -> str:
     """用 ffprobe（有则用，无则解析 ffmpeg -i 输出）读取视频流编码名"""
     ffmpeg = resolve_ffmpeg()
