@@ -90,6 +90,29 @@ def _transcode(src: Path) -> Path:
     return src
 
 
+def _friendly_error(raw: str) -> str:
+    """把 yt-dlp 的英文报错转成对用户有用的中文提示，并保留原始信息便于排查。
+
+    yt-dlp 的报错对普通用户几乎没有可读性，这里只覆盖最常见的几类。
+    """
+    text = raw.replace("\r", " ").replace("\n", " ").strip()
+    low = text.lower()
+    if any(k in low for k in ("more expected", "read timed out", "connection reset",
+                              "incomplete read", "remote end closed", "timed out",
+                              "connection aborted", "temporary failure")):
+        return ("下载被中途中断：网络不稳定，或代理/防火墙限制了持续下载。"
+                f"请检查网络与代理后重试。（原始信息：{text}）")
+    if "403" in text or "forbidden" in low:
+        return f"服务器拒绝访问（403），可能需要在设置里填入登录 Cookie。（原始信息：{text}）"
+    if "video unavailable" in low or "not available" in low or "404" in text:
+        return f"视频不可访问：可能已删除、设为私密或有地区限制。（原始信息：{text}）"
+    if "unsupported url" in low:
+        return f"暂不支持该链接，请换一个视频页面链接。（原始信息：{text}）"
+    if "sign in" in low or "cookies" in low or "login" in low:
+        return f"该视频需要登录才能下载，请在设置里配置 Cookie。（原始信息：{text}）"
+    return text
+
+
 def _download(job_id: str, url: str, max_height: int) -> None:
     import yt_dlp  # 延迟导入，未安装时只影响本功能
 
@@ -121,7 +144,16 @@ def _download(job_id: str, url: str, max_height: int) -> None:
         "noprogress": True,
         "quiet": True,
         "no_warnings": True,
-        "retries": 3,
+        # 网络不稳时单条 HTTP 连接会被 CDN 中途掐断，典型报错是
+        # 「Got error: N bytes read, M more expected. Giving up after 3 retries」。
+        # 这类中断是可恢复的，把重试次数提高并做指数退避，避免大文件下到一半整体失败。
+        "retries": 10,
+        "fragment_retries": 10,
+        "retry_sleep_functions": {
+            "http": lambda n: min(2 ** n, 20),
+            "fragment": lambda n: min(2 ** n, 20),
+            "extractor": lambda n: min(2 ** n, 20),
+        },
         "socket_timeout": 30,
         "ffmpeg_location": ff_dir,
     }
@@ -151,7 +183,8 @@ def _download(job_id: str, url: str, max_height: int) -> None:
              duration=probe_duration(path))
     except Exception as e:
         logger.exception("下载任务 %s 失败", job_id)
-        _set(job_id, status="failed", progress=100, message=str(e)[:300], error=str(e)[:500])
+        _set(job_id, status="failed", progress=100,
+             message=_friendly_error(str(e))[:300], error=str(e)[:500])
 
 
 def start_download(url: str, max_height: int = 720) -> str:
