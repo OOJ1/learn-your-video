@@ -97,13 +97,13 @@ export default function App() {
 
   return (
     <div className="flex h-screen flex-col">
-      <header className="flex items-center gap-2 border-b px-4 py-2.5">
+      <header className="flex items-center gap-2 border-b border-white/40 bg-white/40 px-4 py-2.5 backdrop-blur-xl">
         <GraduationCap className="h-5 w-5" />
         {/* 两个模块标题，点击来回切换 */}
         <button
           onClick={() => setModule("study")}
           className={`flex items-baseline gap-2 rounded px-1.5 py-0.5 transition-colors ${
-            module === "study" ? "bg-accent" : "hover:bg-accent/50"
+            module === "study" ? "bg-white/60" : "hover:bg-white/50"
           }`}
           title="切回上传 · 总结 · 问答"
         >
@@ -113,12 +113,12 @@ export default function App() {
           <span className="text-[11px] text-muted-foreground">上传 · 总结 · 问答</span>
         </button>
 
-        <span className="text-border">|</span>
+        <span className="text-white/40">|</span>
 
         <button
           onClick={() => setModule("grabber")}
           className={`rounded px-1.5 py-0.5 text-[11px] transition-colors ${
-            module === "grabber" ? "bg-accent font-medium" : "text-muted-foreground hover:bg-accent/50"
+            module === "grabber" ? "bg-white/60 font-medium" : "text-muted-foreground hover:bg-white/50"
           }`}
           title="把网上视频下载到本地"
         >
@@ -147,7 +147,7 @@ export default function App() {
         />
       ) : (
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-80 shrink-0 flex-col border-r">
+        <aside className="flex w-80 shrink-0 flex-col border-r border-white/40 bg-white/30 backdrop-blur-xl">
           <div className="border-b p-3">
             <UploadZone
               onUploaded={(d) => {
@@ -185,16 +185,16 @@ export default function App() {
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-2 border-b px-4 py-2">
+              <div className="flex items-center gap-2 border-b border-white/40 bg-white/30 px-4 py-2 backdrop-blur">
                 <span className="truncate text-sm font-medium">{selected.filename}</span>
-                <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                <span className="rounded border border-white/50 bg-white/50 px-1.5 py-0.5 text-[11px] text-muted-foreground backdrop-blur">
                   {selected.type === "video" ? "视频" : "文章"}
                 </span>
               </div>
 
               {/* 问答板块占 1/4；左侧自上而下：一句话标题 → 视频窗口 → 时间轴/核心要点 */}
               <div className="grid min-h-0 flex-1 grid-cols-4">
-                <div className="col-span-3 min-h-0 space-y-3 overflow-y-auto border-r p-3">
+                <div className="col-span-3 min-h-0 space-y-3 overflow-y-auto border-r border-white/40 p-3">
                   <SummaryHeadline
                     doc={selected}
                     onRetry={onRetry}

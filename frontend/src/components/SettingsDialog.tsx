@@ -74,8 +74,8 @@ export function SettingsDialog() {
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-8">
-          <div className="max-h-full w-full max-w-lg overflow-y-auto rounded-xl border bg-background shadow-xl">
-            <div className="flex items-center gap-2 border-b px-4 py-3">
+          <div className="max-h-full w-full max-w-lg overflow-y-auto rounded-2xl border border-white/60 bg-white/70 shadow-2xl backdrop-blur-2xl">
+            <div className="flex items-center gap-2 border-b border-white/40 px-4 py-3">
               <Settings className="h-4 w-4" />
               <span className="text-sm font-semibold">设置中心</span>
               <div className="flex-1" />
@@ -142,7 +142,7 @@ export function SettingsDialog() {
               </div>
 
               {/* 联网搜索 */}
-              <div className="space-y-2 rounded-lg border p-3">
+              <div className="space-y-2 rounded-xl border border-white/40 bg-white/30 p-3 backdrop-blur">
                 <label className="flex items-center gap-2 text-xs font-semibold">
                   <input
                     type="checkbox"
@@ -195,7 +195,7 @@ export function SettingsDialog() {
               {msg && (
                 <p
                   className={`flex items-center gap-1.5 rounded-lg p-2 text-[11px] ${
-                    msg.ok ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"
+                    msg.ok ? "bg-emerald-500/10 text-emerald-700" : "bg-red-500/10 text-red-600"
                   }`}
                 >
                   {msg.ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
@@ -204,7 +204,7 @@ export function SettingsDialog() {
               )}
             </div>
 
-            <div className="flex items-center gap-2 border-t px-4 py-3">
+            <div className="flex items-center gap-2 border-t border-white/40 px-4 py-3">
               <span className="text-[11px] text-muted-foreground">
                 保存后立即生效，配置写入后端 .env
               </span>

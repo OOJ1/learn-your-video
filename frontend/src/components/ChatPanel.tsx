@@ -96,7 +96,7 @@ export function ChatPanel({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b px-3 py-2">
+      <div className="flex items-center justify-between border-b border-white/40 bg-white/30 px-3 py-2 backdrop-blur">
         <span className="text-xs font-semibold">问答</span>
         <div className="flex items-center gap-1">
           {(["auto", "on", "off"] as const).map((v) => {
@@ -110,9 +110,9 @@ export function ChatPanel({
                   "rounded px-2 py-0.5 text-[11px] transition-colors",
                   disabled
                     ? "cursor-not-allowed text-muted-foreground/40 line-through"
-                    : useWeb === v
+                    :                   useWeb === v
                     ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-accent"
+                    : "text-muted-foreground hover:bg-white/50"
                 )}
               >
                 {v === "auto" ? "智能联网" : v === "on" ? "强制联网" : "仅本地"}
@@ -137,11 +137,11 @@ export function ChatPanel({
             <div
               className={cn(
                 "max-w-[85%] rounded-xl px-3 py-2",
-                m.role === "user"
+                  m.role === "user"
                   ? "bg-primary text-primary-foreground"
                   : m.error
-                  ? "bg-red-50 text-red-700"
-                  : "border bg-muted/40"
+                  ? "bg-red-500/10 text-red-700"
+                  : "border border-white/50 bg-white/40 backdrop-blur"
               )}
             >
               {m.role === "user" ? (
@@ -193,7 +193,7 @@ export function ChatPanel({
         <div ref={bottomRef} />
       </div>
 
-      <div className="border-t p-2">
+      <div className="border-t border-white/40 bg-white/30 p-2 backdrop-blur">
         <div className="flex items-end gap-2">
           <Textarea
             value={q}

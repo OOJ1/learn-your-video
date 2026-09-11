@@ -33,7 +33,7 @@ function DimLabel({ text, tip }: { text: string; tip?: string }) {
       <span className="border-b border-dashed border-muted-foreground/60 group-hover:border-foreground/60">
         {text}
       </span>
-      <span className="pointer-events-none absolute left-0 top-full z-30 mt-1.5 hidden w-72 max-w-[80vw] rounded-lg border bg-popover p-2.5 text-xs font-normal leading-relaxed text-popover-foreground shadow-lg ring-1 ring-black/5 group-hover:block">
+      <span className="pointer-events-none absolute left-0 top-full z-30 mt-1.5 hidden w-72 max-w-[80vw] rounded-lg border border-white/60 bg-white/80 p-2.5 text-xs font-normal leading-relaxed text-popover-foreground shadow-lg ring-1 ring-black/5 backdrop-blur-xl group-hover:block">
         {tip}
       </span>
     </span>
@@ -47,7 +47,7 @@ function ScoreCard({ vs }: { vs: ValueScore }) {
   const pct = (n: number) => Math.min(100, Math.max(0, (n / 20) * 100));
 
   return (
-    <div className="rounded-xl border p-3">
+    <div className="rounded-xl border border-white/40 bg-white/30 p-3 backdrop-blur">
       <div className="flex items-center gap-3">
         <div className="w-12 shrink-0 text-center">
           <div className="text-2xl font-bold leading-none">{vs.total}</div>
@@ -61,7 +61,7 @@ function ScoreCard({ vs }: { vs: ValueScore }) {
             </span>
             <span className="shrink-0 text-muted-foreground">{vs.level}</span>
           </div>
-          <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-white/40">
             <div
               className={cn("h-1.5 rounded-full transition-all", scoreColor(vs.total))}
               style={{ width: `${Math.min(100, Math.max(0, vs.total))}%` }}
@@ -95,7 +95,7 @@ function ScoreCard({ vs }: { vs: ValueScore }) {
                       {d.score}/20
                     </span>
                   </div>
-                  <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                  <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-white/40">
                     <div
                       className="h-1.5 rounded-full bg-primary/60"
                       style={{ width: `${pct(d.score)}%` }}
@@ -143,7 +143,7 @@ function PointItem({
       <button
         onClick={() => onSeek!(p.t!)}
         title="点击跳转到视频对应位置"
-        className="flex w-full gap-2 rounded-lg px-1.5 py-1 -mx-1.5 text-left text-sm hover:bg-accent"
+        className="flex w-full gap-2 rounded-lg px-1.5 py-1 -mx-1.5 text-left text-sm hover:bg-white/50"
       >
         <span className="mt-0.5 flex shrink-0 items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[11px] text-primary">
           <Play className="h-2.5 w-2.5" />
@@ -288,7 +288,7 @@ export function SummaryPanel({
               模型评价
               <span className="text-xs font-normal text-muted-foreground">（对内容的看法）</span>
             </p>
-            <p className="rounded-lg border-l-2 border-primary/50 bg-muted/40 p-3 text-sm leading-relaxed">
+            <p className="rounded-lg border-l-2 border-primary/50 bg-white/30 p-3 text-sm leading-relaxed backdrop-blur">
               {s.review}
             </p>
           </div>
@@ -303,7 +303,7 @@ export function SummaryPanel({
             </p>
             <div className="space-y-2">
               {s.notes.map((n, i) => (
-                <div key={i} className="rounded-xl border bg-muted/30 p-3">
+                <div key={i} className="rounded-xl border border-white/40 bg-white/30 p-3 backdrop-blur">
                   {n.title ? (
                     <p className="mb-1.5 text-xs font-semibold text-foreground/90">{n.title}</p>
                   ) : null}

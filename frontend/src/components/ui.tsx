@@ -8,11 +8,13 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        outline: "border border-input bg-background hover:bg-accent",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        ghost: "hover:bg-accent",
-        destructive: "bg-destructive text-white hover:bg-destructive/90",
+        default: "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm",
+        outline:
+          "border border-white/60 bg-white/40 text-foreground backdrop-blur hover:bg-white/60",
+        secondary:
+          "border border-white/50 bg-white/40 text-foreground backdrop-blur hover:bg-white/60",
+        ghost: "hover:bg-white/50",
+        destructive: "bg-destructive text-white hover:bg-destructive/90 shadow-sm",
       },
       size: {
         default: "h-9 px-4 py-2",
@@ -37,7 +39,13 @@ Button.displayName = "Button";
 
 /* ---------------- Card ---------------- */
 export const Card = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("rounded-xl border bg-card text-card-foreground shadow-sm", className)} {...props} />
+  <div
+    className={cn(
+      "rounded-2xl border border-white/50 bg-white/50 text-card-foreground shadow-lg backdrop-blur-xl",
+      className
+    )}
+    {...props}
+  />
 );
 export const CardHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div className={cn("flex flex-col space-y-1 p-4", className)} {...props} />
@@ -55,7 +63,7 @@ export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttribute
     <input
       ref={ref}
       className={cn(
-        "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+        "flex h-9 w-full rounded-md border border-white/60 bg-white/50 px-3 py-1 text-sm shadow-sm backdrop-blur placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
         className
       )}
       {...props}
@@ -70,10 +78,10 @@ export const Textarea = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <textarea
     ref={ref}
-    className={cn(
-      "flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
-      className
-    )}
+      className={cn(
+        "flex min-h-[60px] w-full rounded-md border border-white/60 bg-white/50 px-3 py-2 text-sm shadow-sm backdrop-blur placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+        className
+      )}
     {...props}
   />
 ));
@@ -81,16 +89,16 @@ Textarea.displayName = "Textarea";
 
 /* ---------------- Badge ---------------- */
 const badgeVariants = cva(
-  "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium transition-colors",
+  "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium transition-colors backdrop-blur",
   {
     variants: {
       variant: {
-        default: "border-transparent bg-primary text-primary-foreground",
-        secondary: "border-transparent bg-secondary text-secondary-foreground",
-        outline: "text-foreground",
-        success: "border-transparent bg-emerald-100 text-emerald-700",
-        warn: "border-transparent bg-amber-100 text-amber-700",
-        danger: "border-transparent bg-red-100 text-red-700",
+        default: "border-transparent bg-foreground/80 text-background",
+        secondary: "border-white/60 bg-white/50 text-foreground",
+        outline: "border-white/60 text-foreground",
+        success: "border-emerald-500/30 bg-emerald-500/15 text-emerald-700",
+        warn: "border-amber-500/30 bg-amber-500/15 text-amber-700",
+        danger: "border-red-500/30 bg-red-500/15 text-red-700",
       },
     },
     defaultVariants: { variant: "default" },
@@ -108,7 +116,7 @@ export function Badge({ className, variant, ...props }: BadgeProps) {
 /* ---------------- Progress ---------------- */
 export function Progress({ value = 0, className }: { value?: number; className?: string }) {
   return (
-    <div className={cn("h-1.5 w-full overflow-hidden rounded-full bg-secondary", className)}>
+    <div className={cn("h-1.5 w-full overflow-hidden rounded-full bg-white/40", className)}>
       <div
         className="h-full rounded-full bg-primary transition-all duration-300"
         style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
@@ -128,14 +136,16 @@ export function Tabs({
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="inline-flex items-center gap-1 rounded-lg bg-muted p-1">
+    <div className="inline-flex items-center gap-1 rounded-lg border border-white/50 bg-white/40 p-1 backdrop-blur">
       {tabs.map((t) => (
         <button
           key={t.value}
           onClick={() => onChange(t.value)}
           className={cn(
             "rounded-md px-3 py-1 text-xs font-medium transition-colors",
-            value === t.value ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
+            value === t.value
+              ? "bg-white/80 shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
           )}
         >
           {t.label}

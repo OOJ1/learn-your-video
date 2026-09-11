@@ -68,12 +68,22 @@
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply text-foreground antialiased;
     font-family: "Inter", "PingFang SC", "MiSans", "HarmonyOS Sans SC", "Hiragino Sans GB",
       "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, -apple-system,
       "Segoe UI", sans-serif;
     line-height: 1.6;
     text-rendering: optimizeLegibility;
+    min-height: 100vh;
+    /* 玻璃拟态的底层：柔和多色 mesh 渐变，半透明面板才能透出色彩 */
+    background-color: #eef2ff;
+    background-image:
+      radial-gradient(60% 60% at 12% 18%, rgba(167, 139, 250, 0.45), transparent 60%),
+      radial-gradient(55% 55% at 88% 12%, rgba(56, 189, 248, 0.40), transparent 60%),
+      radial-gradient(60% 60% at 78% 88%, rgba(244, 114, 182, 0.40), transparent 60%),
+      radial-gradient(55% 55% at 18% 85%, rgba(110, 231, 183, 0.38), transparent 60%),
+      linear-gradient(135deg, #eef2ff, #f5f3ff 45%, #ecfeff);
+    background-attachment: fixed;
   }
 
   /* 数字与代码保持等宽观感，避免跳动 */
@@ -114,10 +124,10 @@
   @apply my-1;
 }
 .md-body code {
-  @apply rounded bg-muted px-1.5 py-0.5 text-[13px];
+  @apply rounded bg-white/50 px-1.5 py-0.5 text-[13px];
 }
 .md-body pre {
-  @apply my-3 overflow-x-auto rounded-lg bg-muted p-3;
+  @apply my-3 overflow-x-auto rounded-lg bg-white/40 p-3;
 }
 .md-body pre code {
   @apply bg-transparent p-0;
@@ -151,7 +161,8 @@
   height: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  @apply rounded bg-border;
+  @apply rounded bg-white/50;
+  border: 1px solid rgba(255, 255, 255, 0.4);
 }
 ::-webkit-scrollbar-track {
   background: transparent;

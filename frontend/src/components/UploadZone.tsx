@@ -56,8 +56,8 @@ export function UploadZone({ onUploaded }: { onUploaded: (d: Doc) => void }) {
           pick(e.dataTransfer.files?.[0]);
         }}
         onClick={() => inputRef.current?.click()}
-        className={`flex cursor-pointer flex-col items-center gap-1 rounded-xl border-2 border-dashed p-4 text-center transition-colors ${
-          dragging ? "border-primary bg-accent" : "border-border hover:bg-accent/50"
+        className={`flex cursor-pointer flex-col items-center gap-1 rounded-xl border-2 border-dashed p-4 text-center transition-colors backdrop-blur ${
+          dragging ? "border-primary bg-white/60" : "border-white/50 hover:bg-white/50"
         }`}
       >
         <UploadCloud className="h-5 w-5 text-muted-foreground" />
@@ -79,7 +79,7 @@ export function UploadZone({ onUploaded }: { onUploaded: (d: Doc) => void }) {
       </div>
 
       {file && (
-        <div className="space-y-2 rounded-lg border bg-muted/40 p-2">
+        <div className="space-y-2 rounded-lg border border-white/50 bg-white/40 p-2 backdrop-blur">
           <div className="flex items-center gap-2 text-xs">
             {type === "video" ? (
               <Video className="h-3.5 w-3.5 shrink-0" />

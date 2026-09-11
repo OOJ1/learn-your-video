@@ -138,7 +138,7 @@ export function GrabberPanel({ onImported }: { onImported?: (d: Doc) => void }) 
     <div className="min-h-0 flex-1 overflow-y-auto p-6">
       <div className="mx-auto max-w-2xl space-y-4">
         {/* 傻瓜式操作说明 */}
-        <div className="rounded-xl border bg-muted/40 p-4">
+        <div className="rounded-2xl border border-white/50 bg-white/40 p-4 backdrop-blur">
           <p className="flex items-center gap-1.5 text-sm font-semibold">
             <Sparkles className="h-4 w-4" />
             三步把网上视频存到本地
@@ -172,7 +172,7 @@ export function GrabberPanel({ onImported }: { onImported?: (d: Doc) => void }) 
         </div>
 
         {/* 输入区 */}
-        <div className="space-y-2 rounded-xl border p-4">
+        <div className="space-y-2 rounded-2xl border border-white/50 bg-white/40 p-4 backdrop-blur">
           <div className="flex items-center gap-2">
             <Link2 className="h-4 w-4 text-muted-foreground" />
             <Input
@@ -206,7 +206,7 @@ export function GrabberPanel({ onImported }: { onImported?: (d: Doc) => void }) 
         </div>
 
         {err && (
-          <p className="flex items-center gap-1.5 rounded-lg bg-red-50 p-3 text-xs text-red-600">
+          <p className="flex items-center gap-1.5 rounded-lg bg-red-500/10 p-3 text-xs text-red-600">
             <AlertTriangle className="h-3.5 w-3.5" />
             {err}
           </p>
@@ -214,7 +214,7 @@ export function GrabberPanel({ onImported }: { onImported?: (d: Doc) => void }) 
 
         {/* 当前进度 */}
         {job && (
-          <div className="space-y-3 rounded-xl border p-4">
+          <div className="space-y-3 rounded-2xl border border-white/50 bg-white/40 p-4 backdrop-blur">
             <div className="flex items-center gap-2 text-xs">
               {job.status === "done" ? (
                 <CheckCircle2 className="h-4 w-4 text-emerald-600" />
@@ -228,7 +228,7 @@ export function GrabberPanel({ onImported }: { onImported?: (d: Doc) => void }) 
               <span className="text-muted-foreground">{job.progress}%</span>
             </div>
 
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/40">
               <div
                 className={`h-1.5 rounded-full transition-all ${
                   job.status === "failed" ? "bg-red-500" : "bg-emerald-500"
@@ -247,7 +247,7 @@ export function GrabberPanel({ onImported }: { onImported?: (d: Doc) => void }) 
                 <div className="flex-1" />
                 <a
                   href={api.grabFileUrl(job.id)}
-                  className="inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-md border border-input bg-background px-3 text-xs font-medium transition-colors hover:bg-accent"
+                  className="inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-md border border-white/60 bg-white/50 px-3 text-xs font-medium text-foreground backdrop-blur transition-colors hover:bg-white/70"
                 >
                   <DownloadIcon className="h-3.5 w-3.5" />
                   保存到本地
@@ -264,15 +264,15 @@ export function GrabberPanel({ onImported }: { onImported?: (d: Doc) => void }) 
 
         {/* 历史下载：下载的文件会一直留在本地，这里可以随时取用或清理 */}
         {others.length > 0 && (
-          <div className="rounded-xl border">
-            <div className="flex items-center gap-1.5 border-b px-4 py-2.5">
+          <div className="rounded-2xl border border-white/50 bg-white/30 backdrop-blur">
+            <div className="flex items-center gap-1.5 border-b border-white/40 px-4 py-2.5">
               <History className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="text-xs font-semibold">历史下载</span>
               <span className="text-[11px] text-muted-foreground">
                 {others.length} 个 · 占用 {fmtBytes(totalBytes)}
               </span>
             </div>
-            <div className="divide-y">
+            <div className="divide-y divide-white/40">
               {others.map((j) => (
                 <div key={j.id} className="flex items-center gap-2 px-4 py-2.5">
                   <div className="min-w-0 flex-1">
@@ -290,7 +290,7 @@ export function GrabberPanel({ onImported }: { onImported?: (d: Doc) => void }) 
                       <a
                         href={api.grabFileUrl(j.id)}
                         title="保存到本地"
-                        className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-input bg-background px-2.5 text-xs font-medium transition-colors hover:bg-accent"
+                        className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-white/60 bg-white/50 px-2.5 text-xs font-medium text-foreground backdrop-blur transition-colors hover:bg-white/70"
                       >
                         <DownloadIcon className="h-3.5 w-3.5" />
                         保存
