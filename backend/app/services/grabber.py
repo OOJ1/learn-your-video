@@ -7,11 +7,13 @@
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 import shutil
 import subprocess
 import threading
+import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -26,6 +28,9 @@ _PLAYABLE = ("h264", "avc1", "vp8", "vp9", "av01")
 # job_id -> dict(status, progress, message, filename, size, path, error, title)
 _jobs: dict[str, dict[str, Any]] = {}
 _lock = threading.Lock()
+_loaded = False          # 是否已从磁盘恢复过任务记录
+_last_dump = {"t": 0.0}  # 进度落盘节流用
+_MAX_JOBS = 60           # 只保留最近的任务记录，防止无限增长
 
 
 def grab_dir() -> Path:
@@ -34,19 +39,103 @@ def grab_dir() -> Path:
     return d
 
 
+def _jobs_file() -> Path:
+    d = get_settings().data_path / "store"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / "grabber.json"
+
+
+def _dump() -> None:
+    """把任务记录落盘。落盘失败绝不能影响下载主流程，所以只记日志。"""
+    try:
+        latest = sorted(_jobs.values(), key=lambda j: j.get("updated_at", 0), reverse=True)
+        _jobs_file().write_text(
+            json.dumps(latest[:_MAX_JOBS], ensure_ascii=False), encoding="utf-8")
+    except Exception as e:
+        logger.warning("下载任务落盘失败：%s", e)
+
+
+def _adopt_orphan_files() -> list[str]:
+    """把 grabbed/ 里没有任务记录的文件重新登记为已完成任务。
+
+    这些文件来自「任务落盘」之前的下载：任务只存在内存里，后端一重启，
+    界面上就再也看不到它们，文件也取不回、删不掉，只能烂在磁盘上。
+    文件命名是 {job_id}_{标题}.{ext}，据此重建记录。
+    """
+    known = set(_jobs)
+    adopted: list[str] = []
+    for f in sorted(grab_dir().iterdir()):
+        if not f.is_file() or f.name.endswith((".part", ".ytdl", ".temp")):
+            continue
+        job_id, sep, rest = f.name.partition("_")
+        if not sep or not job_id or job_id in known:
+            continue
+        _jobs[job_id] = {
+            "id": job_id, "status": "done", "progress": 100,
+            "message": "历史下载（已自动恢复）", "url": "", "filename": f.name,
+            "path": str(f), "size": f.stat().st_size, "duration": 0,
+            "title": rest, "codec": "", "error": "",
+            "updated_at": f.stat().st_mtime,
+        }
+        known.add(job_id)
+        adopted.append(f.name)
+    return adopted
+
+
+def _ensure_loaded() -> None:
+    """首次使用时从磁盘恢复任务记录（只做一次）。"""
+    global _loaded
+    if _loaded:
+        return
+    _loaded = True
+    try:
+        for j in json.loads(_jobs_file().read_text(encoding="utf-8")):
+            if not j.get("id"):
+                continue
+            # 进程重启后，running 任务的线程早已不存在，标记为已中断
+            if j.get("status") == "running":
+                j.update(status="failed", progress=100,
+                         message="后端重启，任务已中断，请重新下载")
+            _jobs[j["id"]] = j
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        logger.warning("读取下载任务记录失败（忽略并重建）：%s", e)
+
+    try:
+        adopted = _adopt_orphan_files()
+        if adopted:
+            logger.info("已恢复 %d 个历史下载文件：%s", len(adopted), adopted)
+            _dump()
+    except Exception as e:
+        logger.warning("恢复历史下载文件失败：%s", e)
+
+
 def get_job(job_id: str) -> dict[str, Any] | None:
+    _ensure_loaded()
     with _lock:
         return dict(_jobs.get(job_id) or {})
 
 
 def list_jobs() -> list[dict[str, Any]]:
+    _ensure_loaded()
     with _lock:
-        return [dict(v) for v in _jobs.values()]
+        return sorted((dict(v) for v in _jobs.values()),
+                      key=lambda j: j.get("updated_at", 0), reverse=True)
 
 
 def _set(job_id: str, **kw: Any) -> None:
     with _lock:
-        _jobs[job_id].update(kw)
+        j = _jobs.get(job_id)
+        if j is None:
+            return
+        j.update(kw)
+        j["updated_at"] = time.time()
+        # 进度更新很频繁，做 1 秒节流；状态变化必须立刻落盘
+        now = time.time()
+        if "status" in kw or now - _last_dump["t"] >= 1.0:
+            _last_dump["t"] = now
+            _dump()
 
 
 def probe_video_codec(path: Path) -> str:
@@ -188,12 +277,14 @@ def _download(job_id: str, url: str, max_height: int) -> None:
 
 
 def start_download(url: str, max_height: int = 720) -> str:
+    _ensure_loaded()
     job_id = uuid.uuid4().hex[:12]
     with _lock:
         _jobs[job_id] = {"id": job_id, "status": "running", "progress": 0,
                          "message": "正在解析链接…", "url": url, "filename": "",
                          "path": "", "size": 0, "duration": 0, "title": "",
-                         "codec": "", "error": ""}
+                         "codec": "", "error": "", "updated_at": time.time()}
+        _dump()
     threading.Thread(target=_download, args=(job_id, url, max_height), daemon=True).start()
     return job_id
 
