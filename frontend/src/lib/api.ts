@@ -23,9 +23,20 @@ export interface KeyPoint {
   text: string;
 }
 
+/** 知识笔记小节：标题 + 若干条知识点 */
+export interface NoteSection {
+  title: string;
+  points: string[];
+}
+
 export interface Summary {
   one_liner?: string;
   key_points?: (string | KeyPoint)[];
+  /** 模型对内容的评价与看法 */
+  review?: string;
+  /** 知识笔记（替代旧版 outline 内容脉络） */
+  notes?: NoteSection[];
+  /** @deprecated 旧版字段，仅用于兼容历史数据 */
   outline?: (string | KeyPoint)[];
   tags?: string[];
   reading_minutes?: number;
@@ -38,18 +49,36 @@ export function asPoint(item: string | KeyPoint): KeyPoint {
   return typeof item === "string" ? { t: null, text: item } : item;
 }
 
-/** 时间轴分段：覆盖全片的逐段总结，t_start/t_end 单位为秒 */
-export interface TimelinePart {
-  t_start: number;
-  t_end: number;
+/** 播放器进度条上的时间戳标记（时间戳直接来自核心要点） */
+export interface PlayerMarker {
+  t: number;
   text: string;
+}
+
+/**
+ * 从摘要里抽取可跳转的时间戳标记：核心要点自带起始秒数，直接复用。
+ * 旧版记录若没有 key_points，则退回 outline（内容脉络）。
+ * 结果按时间升序去重，供进度条打刻度与悬停预览。
+ */
+export function pointsToMarkers(summary?: Summary | null): PlayerMarker[] {
+  const src = summary?.key_points?.length ? summary.key_points : summary?.outline || [];
+  const seen = new Set<number>();
+  const out: PlayerMarker[] = [];
+  for (const item of src) {
+    const p = asPoint(item);
+    if (p.t == null || !p.text) continue;
+    const t = Math.max(0, Math.round(p.t));
+    if (seen.has(t)) continue;
+    seen.add(t);
+    out.push({ t, text: p.text });
+  }
+  return out.sort((a, b) => a.t - b.t);
 }
 
 export interface Doc {
   id: string;
   filename: string;
   type: DocType;
-  timeline?: TimelinePart[];
   status: string;
   progress: number;
   message?: string;
@@ -85,6 +114,8 @@ export interface ChatResp {
   engine?: string | null;
   reason?: string;
   search_error?: string;
+  /** 本地资料与问题相关度普遍偏低（阈值未命中后回退最近邻） */
+  low_relevance?: boolean;
   error?: string;
 }
 

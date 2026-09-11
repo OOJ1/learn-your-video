@@ -1,8 +1,26 @@
 /** @type {import('tailwindcss').Config} */
+const FONT_SANS = [
+  "Inter",
+  "PingFang SC",
+  "MiSans",
+  "HarmonyOS Sans SC",
+  "Hiragino Sans GB",
+  "Noto Sans SC",
+  "Microsoft YaHei UI",
+  "Microsoft YaHei",
+  "system-ui",
+  "-apple-system",
+  "Segoe UI",
+  "sans-serif",
+];
+
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      fontFamily: {
+        sans: FONT_SANS,
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -31,6 +49,10 @@ export default {
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
+        },
+        popover: {
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))",
         },
       },
       borderRadius: {

@@ -2,12 +2,48 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   字体：Inter（拉丁 / 数字）+ 高品质中文，气质对齐 DeepSeek 官网
+   Inter 自带，随应用分发（public/fonts），离线也不会退回默认字体；
+   中文优先取系统里最好的现代黑体，最后兜底微软雅黑。
+   ============================================================ */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/inter-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/inter-latin-500-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/inter-latin-600-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/inter-latin-700-normal.woff2") format("woff2");
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;
     --foreground: 222 47% 11%;
     --card: 0 0% 100%;
     --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
     --muted: 210 40% 96%;
     --muted-foreground: 215 16% 47%;
     --border: 214 32% 91%;
@@ -27,10 +63,38 @@
     @apply border-border;
   }
 
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    font-family: "Inter", "PingFang SC", "MiSans", "HarmonyOS Sans SC", "Hiragino Sans GB",
+      "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, -apple-system,
+      "Segoe UI", sans-serif;
+    line-height: 1.6;
+    text-rendering: optimizeLegibility;
   }
+
+  /* 数字与代码保持等宽观感，避免跳动 */
+  code,
+  pre,
+  kbd,
+  samp {
+    font-family: "Inter", ui-monospace, SFMono-Regular, Menlo, Consolas, "Microsoft YaHei", monospace;
+  }
+}
+
+/* 视频播放器全屏时铺满 */
+.vp-wrap:fullscreen,
+.vp-wrap:-webkit-full-screen {
+  border-radius: 0;
+  border: none;
+}
+.vp-wrap:fullscreen video,
+.vp-wrap:-webkit-full-screen video {
+  height: 100%;
+  object-fit: contain;
 }
 
 /* Markdown 渲染样式 */

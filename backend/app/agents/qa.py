@@ -60,8 +60,11 @@ def _truncate(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[:int(limit * 0.7)] + "\n\n……（省略）……\n\n" + text[-int(limit * 0.3):]
 
 
-def build_local_context(doc_id: str, question: str) -> tuple[str, list[Ref]]:
-    """文章：整篇直投（不向量化）；视频：向量检索 Top-K 并带回时间戳。"""
+def build_local_context(doc_id: str, question: str) -> tuple[str, list[Ref], dict]:
+    """文章：整篇直投（不向量化）；视频：向量检索 Top-K 并带回时间戳。
+
+    返回 (context, refs, flags)。flags["low_relevance"] 表示本地资料与问题相关度偏低。
+    """
     s = get_settings()
     store = get_store()
     doc = store.get_doc(doc_id)
@@ -70,6 +73,7 @@ def build_local_context(doc_id: str, question: str) -> tuple[str, list[Ref]]:
 
     refs: list[Ref] = []
     blocks: list[str] = []
+    flags = {"low_relevance": False}
 
     if doc.get("type") == "article":
         text = store.get_text(doc_id)
@@ -80,10 +84,20 @@ def build_local_context(doc_id: str, question: str) -> tuple[str, list[Ref]]:
         refs.append(Ref(idx, "article", doc.get("filename", ""), doc_id=doc_id,
                         snippet=text[:120]))
     else:
-        hits = get_vector_store().query(
-            question, top_k=s.VIDEO_TOP_K, doc_id=doc_id, threshold=s.SCORE_THRESHOLD)
+        vs = get_vector_store()
+        hits = vs.query(question, top_k=s.VIDEO_TOP_K, doc_id=doc_id,
+                        threshold=s.SCORE_THRESHOLD)
         if not hits:
-            raise QAError("没有检索到相关内容（可能是相似度阈值过高，或字幕尚未生成）")
+            # 阈值只能当软过滤，不能当硬闸门：短视频整段只切出 1 个块时相似度天然偏低，
+            # 一问就 400 会让这类视频完全没法提问。退回最近邻，交给模型自己判断够不够。
+            hits = vs.query(question, top_k=s.VIDEO_TOP_K, doc_id=doc_id, threshold=-1.0)
+            # 内容本身就不超过 top_k 块时，回退等于把全文都交给模型了，
+            # 相似度低不代表资料不可用，不必提示「相关度低」。
+            total = int(doc.get("chunks") or 0)
+            flags["low_relevance"] = bool(hits) and total > s.VIDEO_TOP_K
+        if not hits:
+            raise QAError("这个视频还没有可检索的字幕索引（可能转写或向量化未完成），"
+                          "请点右上角「重试」重新处理")
         for i, h in enumerate(hits, 1):
             m = h.get("metadata", {}) or {}
             st, en = float(m.get("start", 0.0)), float(m.get("end", 0.0))
@@ -93,7 +107,25 @@ def build_local_context(doc_id: str, question: str) -> tuple[str, list[Ref]]:
             )
             refs.append(Ref(i, "video", f"{doc.get('filename')} {fmt_time(st)}",
                             doc_id=doc_id, start=st, end=en, snippet=h["text"][:120]))
-    return "\n\n".join(blocks), refs
+    return "\n\n".join(blocks), refs, flags
+
+
+def _clean_title(filename: str) -> str:
+    """从内部文件名还原出可用作检索词的标题：去掉 v_xxxxxx_ 前缀与扩展名"""
+    name = re.sub(r"^[A-Za-z]_[0-9a-fA-F]{8,}_", "", filename or "")
+    name = re.sub(r"\.[A-Za-z0-9]{2,5}$", "", name)
+    return name.replace("_", " ").strip()
+
+
+def _search_query(doc_id: str, question: str) -> str:
+    """联网检索词 = 资料标题 + 问题。
+
+    问题里常有「这个视频」「他的观点」这类指代，单独拿去搜会搜偏，
+    带上标题能显著提升相关性（不加 LLM 改写，避免多一次调用）。
+    """
+    doc = get_store().get_doc(doc_id) or {}
+    title = _clean_title(str(doc.get("filename") or ""))
+    return f"{title} {question}".strip() if title else question
 
 
 def decide_need_web(question: str, context: str) -> tuple[bool, str]:
@@ -125,21 +157,29 @@ def _history_text(doc_id: str, limit: int = 6) -> str:
 
 def prepare(doc_id: str, question: str, use_web: str = "auto") -> tuple[list[dict], list[Ref], dict]:
     """检索 + 可选联网，产出最终 messages 与引用列表"""
-    context, refs = build_local_context(doc_id, question)
-    meta = {"used_web": False, "engine": None, "reason": "", "search_results": 0}
+    context, refs, flags = build_local_context(doc_id, question)
+    meta = {"used_web": False, "engine": None, "reason": "", "search_results": 0, **flags}
 
-    # 配置里的 SEARCH_PROVIDER 是总开关：设为 off 时任何前端请求都不联网
-    if (get_settings().SEARCH_PROVIDER or "").lower() == "off":
+    # 前端三档：off=仅本地（绝不联网）、on=强制联网、auto=由模型判断
+    # 注意顺序——先判 use_web=="off"，否则会落进 auto 分支把「仅本地」当智能联网用
+    if use_web == "off":
+        need = False
+        meta["reason"] = "已选择仅用本地资料"
+    elif (get_settings().SEARCH_PROVIDER or "").lower() == "off":
+        # 配置里的 SEARCH_PROVIDER 是总开关：设为 off 时任何前端请求都不联网
         need = False
         meta["reason"] = "联网搜索已关闭（可在右上角设置中心开启）"
     elif use_web == "on":
         need = True
     else:
-        need, meta["reason"] = decide_need_web(question, context)
+        # 资料相关度偏低时明确提示判定模型，避免它硬拿低相关片段作答
+        hint = "（注意：检索到的资料与问题相似度普遍偏低，很可能不足以回答。）" \
+            if flags.get("low_relevance") else ""
+        need, meta["reason"] = decide_need_web(question, context + hint)
 
     if need:
         try:
-            results, engine = web_search(question)
+            results, engine = web_search(_search_query(doc_id, question))
             meta.update(used_web=True, engine=engine, search_results=len(results))
             if results:
                 base = len(refs)

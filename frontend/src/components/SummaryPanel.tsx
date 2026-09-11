@@ -9,10 +9,13 @@ import {
   Play,
   ChevronDown,
   ChevronRight,
+  AlertTriangle,
+  Quote,
+  StickyNote,
 } from "lucide-react";
 import type { Doc, ValueScore, KeyPoint, Summary } from "../lib/api";
 import { asPoint } from "../lib/api";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from "./ui";
+import { Badge, Button, Card, CardContent } from "./ui";
 import { api } from "../lib/api";
 import { cn, fmtTime } from "../lib/utils";
 
@@ -26,9 +29,11 @@ function scoreColor(total: number) {
 function DimLabel({ text, tip }: { text: string; tip?: string }) {
   if (!tip) return <span>{text}</span>;
   return (
-    <span className="group relative cursor-help border-b border-dashed border-muted-foreground/50">
-      {text}
-      <span className="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden w-56 rounded-md border bg-popover p-2 text-[11px] font-normal leading-snug text-popover-foreground shadow-md group-hover:block">
+    <span className="group relative inline-block cursor-help">
+      <span className="border-b border-dashed border-muted-foreground/60 group-hover:border-foreground/60">
+        {text}
+      </span>
+      <span className="pointer-events-none absolute left-0 top-full z-30 mt-1.5 hidden w-72 max-w-[80vw] rounded-lg border bg-popover p-2.5 text-xs font-normal leading-relaxed text-popover-foreground shadow-lg ring-1 ring-black/5 group-hover:block">
         {tip}
       </span>
     </span>
@@ -69,28 +74,30 @@ function ScoreCard({ vs }: { vs: ValueScore }) {
         <>
           <button
             onClick={() => setOpen(!open)}
-            className="mt-2.5 flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+            className="mt-2.5 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
           >
             {open ? (
-              <ChevronDown className="h-3 w-3" />
+              <ChevronDown className="h-3.5 w-3.5" />
             ) : (
-              <ChevronRight className="h-3 w-3" />
+              <ChevronRight className="h-3.5 w-3.5" />
             )}
             {open ? "收起细节" : "展开细节"}
-            <span className="text-[10px]">（悬停各维度可看解释）</span>
+            <span className="text-[11px] text-muted-foreground/80">（悬停各维度可看解释）</span>
           </button>
 
           {open && (
-            <div className="mt-2 space-y-1.5">
+            <div className="mt-2.5 space-y-2.5">
               {dims.map(([key, d]) => (
                 <div key={key}>
-                  <div className="flex items-center justify-between text-[11px]">
+                  <div className="flex items-center justify-between gap-3 text-xs">
                     <DimLabel text={d.label || key} tip={d.reason} />
-                    <span className="tabular-nums text-muted-foreground">{d.score}/20</span>
+                    <span className="shrink-0 tabular-nums text-muted-foreground">
+                      {d.score}/20
+                    </span>
                   </div>
-                  <div className="mt-0.5 h-1 w-full overflow-hidden rounded-full bg-muted">
+                  <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
                     <div
-                      className="h-1 rounded-full bg-primary/60"
+                      className="h-1.5 rounded-full bg-primary/60"
                       style={{ width: `${pct(d.score)}%` }}
                     />
                   </div>
@@ -148,16 +155,18 @@ function PointItem({
   );
 }
 
-export function SummaryPanel({
+/**
+ * 顶部标题区：用一句话总结当标题，右侧放操作按钮。
+ * 结构为「标题 → 视频窗口 → 核心要点（带时间戳）」，所以这里只呈现一句话结论。
+ */
+export function SummaryHeadline({
   doc,
   onRetry,
   onResummarize,
-  onSeek,
 }: {
   doc: Doc;
   onRetry: (d: Doc) => void;
   onResummarize: (d: Doc) => void;
-  onSeek?: (sec: number) => void;
 }) {
   const s: Summary | null | undefined = doc.summary;
   const isVideo = doc.type === "video";
@@ -166,34 +175,34 @@ export function SummaryPanel({
   if (!s) {
     return (
       <Card>
-        <CardContent className="p-4 text-xs text-muted-foreground">
+        <CardContent className="flex items-center justify-between gap-3 p-3">
           {failed ? (
-            <div className="space-y-2">
-              <p className="text-red-600">处理失败：{doc.error || doc.message}</p>
+            <>
+              <span className="flex items-center gap-1.5 text-xs text-red-600">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                处理失败：{doc.error || doc.message}
+              </span>
               <Button size="sm" variant="outline" onClick={() => onRetry(doc)}>
                 <RefreshCw className="h-3.5 w-3.5" />
                 重试
               </Button>
-            </div>
+            </>
           ) : (
-            "摘要生成中，请稍候…"
+            <span className="text-xs text-muted-foreground">摘要生成中，请稍候…</span>
           )}
         </CardContent>
       </Card>
     );
   }
 
-  const title =
-    isVideo && s.video_type ? `${s.video_type} · 内容总结` : isVideo ? "视频总结" : "内容总结";
-
   return (
     <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0">
-        <CardTitle className="flex items-center gap-1.5">
-          <Sparkles className="h-3.5 w-3.5" />
-          {title}
-        </CardTitle>
-        <div className="flex gap-1.5">
+      <CardContent className="flex items-start gap-3 p-3.5">
+        <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+        <h2 className="min-w-0 flex-1 text-[15px] font-semibold leading-relaxed tracking-tight">
+          {s.one_liner || "（暂无摘要）"}
+        </h2>
+        <div className="flex shrink-0 gap-1.5">
           {isVideo && (
             <Button
               size="sm"
@@ -221,49 +230,48 @@ export function SummaryPanel({
             导出
           </Button>
         </div>
-      </CardHeader>
+      </CardContent>
+    </Card>
+  );
+}
 
-      <CardContent className="space-y-3">
-        <p className="rounded-lg bg-muted/60 p-3 text-sm leading-relaxed">
-          {s.one_liner || "（暂无摘要）"}
-        </p>
+/**
+ * 详情区（放在视频下方）：核心要点（带时间戳，可点击跳转）+ 评分 + 模型评价 + 知识笔记 + 标签。
+ */
+export function SummaryPanel({
+  doc,
+  onSeek,
+}: {
+  doc: Doc;
+  onSeek?: (sec: number) => void;
+}) {
+  const s: Summary | null | undefined = doc.summary;
+  const isVideo = doc.type === "video";
+  if (!s) return null;
 
-        {s.value_score && <ScoreCard vs={s.value_score} />}
+  const hasDetails =
+    !!s.key_points?.length ||
+    !!s.outline?.length ||
+    !!s.tags?.length ||
+    !!s.value_score ||
+    !!doc.chars ||
+    !!doc.duration;
 
-        {/* 时间轴分段：覆盖全片各时间段，点击任意一段跳转 */}
-        {isVideo && !!doc.timeline?.length && (
-          <div className="rounded-xl border">
-            <p className="border-b px-3 py-1.5 text-xs font-semibold">
-              全片时间轴 · 分段速览{onSeek ? "（点击跳转）" : ""}
-              <span className="ml-1 font-normal text-muted-foreground">
-                共 {doc.timeline.length} 段
-              </span>
-            </p>
-            <div className="max-h-72 space-y-0.5 overflow-y-auto p-1.5">
-              {doc.timeline.map((p, i) => (
-                <button
-                  key={i}
-                  onClick={() => onSeek?.(p.t_start)}
-                  className="flex w-full gap-2 rounded px-2 py-1 text-left text-xs hover:bg-accent"
-                >
-                  <span className="mt-0.5 flex shrink-0 items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] text-primary">
-                    <Play className="h-2.5 w-2.5" />
-                    {fmtTime(p.t_start)}
-                    <span className="text-muted-foreground">–{fmtTime(p.t_end)}</span>
-                  </span>
-                  <span className="min-w-0 py-0.5">{p.text}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+  if (!hasDetails) return null;
 
+  return (
+    <Card>
+      <CardContent className="space-y-4 p-3.5">
         {!!s.key_points?.length && (
           <div>
-            <p className="mb-1.5 text-xs font-semibold text-muted-foreground">
-              核心要点{onSeek && isVideo ? "（点击跳转视频）" : ""}
+            <p className="mb-2 text-sm font-semibold">
+              核心要点{onSeek && isVideo ? (
+                <span className="ml-1 text-xs font-normal text-muted-foreground">
+                  （点击时间戳跳转视频，播放器进度条上同样标出了这些时间点）
+                </span>
+              ) : null}
             </p>
-            <ul className="space-y-0.5">
+            <ul className="space-y-1">
               {s.key_points.map((k, i) => (
                 <PointItem key={i} item={k} onSeek={onSeek} />
               ))}
@@ -271,12 +279,58 @@ export function SummaryPanel({
           </div>
         )}
 
-        {!!s.outline?.length && (
+        {s.value_score && <ScoreCard vs={s.value_score} />}
+
+        {s.review ? (
           <div>
-            <p className="mb-1.5 text-xs font-semibold text-muted-foreground">
-              内容脉络{onSeek && isVideo ? "（点击跳转视频）" : ""}
+            <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
+              <Quote className="h-3.5 w-3.5" />
+              模型评价
+              <span className="text-xs font-normal text-muted-foreground">（对内容的看法）</span>
             </p>
-            <ol className="space-y-0.5">
+            <p className="rounded-lg border-l-2 border-primary/50 bg-muted/40 p-3 text-sm leading-relaxed">
+              {s.review}
+            </p>
+          </div>
+        ) : null}
+
+        {!!s.notes?.length && (
+          <div>
+            <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
+              <StickyNote className="h-3.5 w-3.5" />
+              知识笔记
+              <span className="text-xs font-normal text-muted-foreground">（可当复习笔记用）</span>
+            </p>
+            <div className="space-y-2">
+              {s.notes.map((n, i) => (
+                <div key={i} className="rounded-xl border bg-muted/30 p-3">
+                  {n.title ? (
+                    <p className="mb-1.5 text-xs font-semibold text-foreground/90">{n.title}</p>
+                  ) : null}
+                  <ul className="space-y-1">
+                    {n.points.map((p, j) => (
+                      <li key={j} className="flex gap-2 text-sm leading-relaxed">
+                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/60" />
+                        <span>{p}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 旧数据兼容：还没有 review/notes 的历史摘要，继续展示原来的内容脉络 */}
+        {!s.review && !s.notes?.length && !!s.outline?.length && (
+          <div>
+            <p className="mb-2 text-sm font-semibold">
+              内容脉络
+              <span className="ml-1 text-xs font-normal text-muted-foreground">
+                （旧版摘要，点右上角「重新生成」可换成模型评价 + 知识笔记）
+              </span>
+            </p>
+            <ol className="space-y-1">
               {s.outline.map((o, i) => (
                 <PointItem key={i} item={o} onSeek={onSeek} />
               ))}
@@ -294,7 +348,7 @@ export function SummaryPanel({
           </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-3 border-t pt-2 text-[11px] text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-3 border-t pt-2.5 text-[11px] text-muted-foreground">
           {s.reading_minutes ? (
             <span className="flex items-center gap-1">
               <Clock className="h-3 w-3" />

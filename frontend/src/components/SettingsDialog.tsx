@@ -43,7 +43,8 @@ export function SettingsDialog() {
     setMsg(null);
     const patch: Record<string, string> = {
       LLM_PROVIDER: provider,
-      SEARCH_PROVIDER: webOn ? (tavilyKey ? "auto" : "off") : "off",
+      // 勾上就写 auto：Key 已在后端配置过时不必重新粘贴
+      SEARCH_PROVIDER: webOn ? "auto" : "off",
     };
     if (provider === "openai") {
       if (model) patch.OPENAI_MODEL = model;
@@ -149,8 +150,19 @@ export function SettingsDialog() {
                     onChange={(e) => setWebOn(e.target.checked)}
                   />
                   开启联网搜索
-                  <span className="font-normal text-muted-foreground">（默认关闭）</span>
+                  <span className="font-normal text-muted-foreground">
+                    （问答栏的「智能联网 / 强制联网」总开关）
+                  </span>
                 </label>
+
+                <p
+                  className={`text-[11px] ${
+                    webOn ? "text-emerald-600" : "text-muted-foreground"
+                  }`}
+                >
+                  当前状态：{webOn ? "已开启" : "已关闭"}
+                  {cfg?.has_tavily_key ? " · Tavily Key 已配置" : " · 未配置 Tavily Key"}
+                </p>
 
                 {webOn && (
                   <>
@@ -173,7 +185,7 @@ export function SettingsDialog() {
                     {!cfg?.has_tavily_key && !tavilyKey && (
                       <p className="flex items-center gap-1 text-[11px] text-amber-600">
                         <AlertTriangle className="h-3 w-3" />
-                        未配置 Key，联网搜索不会生效
+                        还没有 Key：保存后会自动降级为 DuckDuckGo（国内网络可能失败）
                       </p>
                     )}
                   </>

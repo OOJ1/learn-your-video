@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import pathlib
 import re
 from urllib.parse import quote
@@ -15,6 +16,8 @@ from app.services.parsers import SUPPORTED_VIDEO_EXT
 from app.services.store import DocStatus, get_store, make_doc
 from app.services.video import process_video, probe_duration, regenerate_video_summary
 from app.services.vector import get_vector_store
+
+logger = logging.getLogger("app.api.videos")
 
 router = APIRouter(prefix="/api/videos", tags=["videos"])
 
@@ -190,7 +193,9 @@ def delete_video(doc_id: str):
     audio.unlink(missing_ok=True)
     try:
         get_vector_store().delete_doc(doc_id)
-    except Exception:
-        pass
+    except Exception as e:
+        # 不阻断记录删除，但要留下痕迹——静默吞错会留下孤儿向量，
+        # 使已删除的视频仍能被问答检索到。
+        logger.warning("删除视频 %s 的向量失败（已保留记录删除）：%s", doc_id, e)
     store.delete_doc(doc_id)
     return {"ok": True}

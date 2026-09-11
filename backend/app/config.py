@@ -34,7 +34,15 @@ class Settings(BaseSettings):
     # qwen3.x 等推理模型默认会先"思考"，开启时 token 会被 reasoning 吃光导致答案为空。
     # 需要模型做复杂推理时改为 true，同时把 OLLAMA_MAX_TOKENS 调大到 4096+
     OLLAMA_THINK: bool = False
-    OLLAMA_MAX_TOKENS: int = 2048
+    OLLAMA_MAX_TOKENS: int = 4096
+    # 摘要/评分这类结构化长输出单独给额度，避免被全局上限截断成非法 JSON
+    SUMMARY_MAX_TOKENS: int = 4096
+    # Ollama 默认上下文只有 4k，长字幕提示词会把窗口占满导致输出被硬截断。
+    # 10240 是按「提示词 8k 字符 + 输出 4k token」留出的余量；
+    # 内存充裕（32G+）可提到 16384 换取更好的长视频覆盖。
+    OLLAMA_NUM_CTX: int = 10240
+    # 单次送进模型的正文上限（超出取首+尾）。要小于 num_ctx 并给输出留足空间。
+    SUMMARY_INPUT_CHARS: int = 8000
 
     # ---------- Embedding ----------
     # local = 本地 fastembed(ONNX, 无需 torch)；openai = 云端端点；ollama = 本地 Ollama
@@ -49,8 +57,8 @@ class Settings(BaseSettings):
 
     # ---------- 搜索 ----------
     # auto = Tavily 优先、失败降级 DuckDuckGo；tavily / duckduckgo = 指定；off = 关闭
-    # 默认关闭联网搜索：需在设置中心配置 Tavily API Key 后手动开启
-    SEARCH_PROVIDER: str = "off"
+    # off 是总开关，会把前端「智能联网 / 强制联网」一起置灰；默认开启 auto
+    SEARCH_PROVIDER: str = "auto"
     TAVILY_API_KEY: str = ""
     SEARCH_MAX_RESULTS: int = 5
 
@@ -65,7 +73,9 @@ class Settings(BaseSettings):
     WHISPER_MODEL_SIZE: str = "small"
     WHISPER_DEVICE: str = "cpu"
     WHISPER_COMPUTE_TYPE: str = "int8"
-    WHISPER_LANGUAGE: str = "zh"
+    # auto/空 = 让 Whisper 自动检测语种（中英混合、纯英文视频必须用 auto）；
+    # 填具体代码(zh/en/ja…)才会强制，强制错误语种会让转写被污染甚至产生幻觉文本。
+    WHISPER_LANGUAGE: str = "auto"
     FFMPEG_PATH: str = ""
 
     # ---------- RAG ----------
@@ -74,9 +84,6 @@ class Settings(BaseSettings):
     SCORE_THRESHOLD: float = 0.30
     CHUNK_SIZE: int = 500
     CHUNK_OVERLAP: int = 80
-    # 时间轴分段总结：每个片段的目标秒数与最大片段数
-    VIDEO_SEGMENT_SECONDS: int = 150
-    VIDEO_SEGMENT_MAX: int = 40
 
     @property
     def data_path(self) -> Path:

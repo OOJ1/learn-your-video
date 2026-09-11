@@ -1,8 +1,12 @@
 """ChromaDB 向量库封装：字幕块 + 时间戳 metadata 的写入与检索。"""
 from __future__ import annotations
 
+import logging
+
 from app.config import get_settings
 from app.core.embeddings import get_embedder
+
+logger = logging.getLogger("app.vector")
 
 
 class VectorStoreError(RuntimeError):
@@ -72,11 +76,39 @@ class VectorStore:
             out.append({"text": d, "metadata": m or {}, "score": round(score, 4)})
         return out
 
-    def delete_doc(self, doc_id: str) -> None:
+    def delete_doc(self, doc_id: str) -> int:
+        """删除该文档的全部向量，返回删除条数。
+
+        这里曾写成 `except Exception: pass`，异常被静默吞掉会留下
+        「记录已删、向量还在」的孤儿数据（本次巡检查出 2 个），
+        结果是已删除的视频仍能被问答检索到。改为：先按 doc_id 取回 id 再删，
+        失败记日志并上抛，由调用方决定如何处理。
+        """
         try:
-            self._col.delete(where={"doc_id": doc_id})
-        except Exception:
-            pass
+            got = self._col.get(where={"doc_id": doc_id}, include=["metadatas"])
+            ids = list(got.get("ids") or [])
+            if ids:
+                self._col.delete(ids=ids)
+            logger.info("已删除向量 doc=%s chunks=%d", doc_id, len(ids))
+            return len(ids)
+        except Exception as e:
+            logger.warning("删除向量失败 doc=%s: %s", doc_id, e)
+            raise
+
+    def doc_ids(self) -> dict[str, int]:
+        """返回 {doc_id: 块数}，用于巡检「记录已删但向量残留」的孤儿数据。"""
+        try:
+            got = self._col.get(include=["metadatas"])
+        except Exception as e:
+            logger.warning("统计向量失败: %s", e)
+            return {}
+        out: dict[str, int] = {}
+        for m in got.get("metadatas") or []:
+            if not m:
+                continue
+            did = str(m.get("doc_id", "?"))
+            out[did] = out.get(did, 0) + 1
+        return out
 
     def count(self) -> int:
         try:

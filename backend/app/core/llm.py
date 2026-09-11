@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Iterator
 
@@ -9,6 +10,8 @@ import httpx
 from openai import OpenAI
 
 from app.config import Settings, get_settings
+
+logger = logging.getLogger("app.llm")
 
 
 class LLMError(RuntimeError):
@@ -120,6 +123,9 @@ class OllamaLLM(BaseLLM):
             "options": {
                 "temperature": self.s.OPENAI_TEMPERATURE if temperature is None else temperature,
                 "num_predict": self.s.OLLAMA_MAX_TOKENS if max_tokens is None else max_tokens,
+                # 必须显式指定：Ollama 默认上下文仅 4k，长字幕会把窗口占满，
+                # 输出被硬截断后 JSON 必然非法（且 done_reason=length）。
+                "num_ctx": self.s.OLLAMA_NUM_CTX,
             },
         }
 
@@ -149,8 +155,16 @@ class OllamaLLM(BaseLLM):
             raise LLMError(f"Ollama 返回错误 {e.response.status_code}: {e.response.text[:300]}") from e
 
     def chat(self, messages, temperature=None, max_tokens=None) -> str:
-        r = self._post(self._payload(messages, temperature, max_tokens))
-        return self._extract(r.json().get("message", {}))
+        data = self._post(self._payload(messages, temperature, max_tokens)).json()
+        # done_reason=length 说明是撞到 num_predict 上限被硬截断，
+        # 这种输出必然不是完整 JSON，直接报错比让上层解析失败更好定位
+        if data.get("done_reason") == "length":
+            limit = self.s.OLLAMA_MAX_TOKENS if max_tokens is None else max_tokens
+            raise LLMError(
+                f"模型输出被截断（num_predict 上限 {limit}），JSON 不完整。"
+                "请调大 .env 的 OLLAMA_MAX_TOKENS 或减少要求输出的条目数"
+            )
+        return self._extract(data.get("message", {}))
 
     def stream(self, messages, temperature=None, max_tokens=None) -> Iterator[str]:
         payload = self._payload(messages, temperature, max_tokens, stream=True)
@@ -254,9 +268,48 @@ def _repair_inner_quotes(txt: str) -> str:
     return "".join(out)
 
 
-def chat_json(llm: BaseLLM, messages: list[dict], default: dict | None = None) -> dict:
-    """让 LLM 返回 JSON，容错剥离 markdown 代码块"""
-    raw = llm.chat(messages, temperature=0.0)
+def _repair_control_chars(txt: str) -> str:
+    """转义字符串值内的裸控制字符（换行 / 制表符）。
+
+    LLM 写长文本（如 200 字的评价、多行笔记）时常在字符串里直接换行，
+    这是 JSON 非法的最常见原因之一（Unterminated string）。
+    """
+    out: list[str] = []
+    in_str = esc = False
+    for c in txt:
+        if not in_str:
+            if c == '"':
+                in_str = True
+            out.append(c)
+            continue
+        if esc:
+            esc = False
+            out.append(c)
+            continue
+        if c == "\\":
+            esc = True
+            out.append(c)
+            continue
+        if c == '"':
+            in_str = False
+            out.append(c)
+        elif c == "\n":
+            out.append("\\n")
+        elif c == "\r":
+            out.append("\\r")
+        elif c == "\t":
+            out.append("\\t")
+        elif ord(c) < 0x20:
+            out.append(" ")
+        else:
+            out.append(c)
+    return "".join(out)
+
+
+def chat_json(llm: BaseLLM, messages: list[dict], default: dict | None = None,
+              max_tokens: int | None = None) -> dict:
+    """让 LLM 返回 JSON，容错剥离 markdown 代码块并修复常见格式瑕疵"""
+    raw = llm.chat(messages, temperature=0.0, max_tokens=max_tokens)
     txt = raw.strip()
     m = _JSON_FENCE.search(txt)
     if m:
@@ -264,13 +317,23 @@ def chat_json(llm: BaseLLM, messages: list[dict], default: dict | None = None) -
     start, end = txt.find("{"), txt.rfind("}")
     if start != -1 and end > start:
         txt = txt[start:end + 1]
-    try:
-        return json.loads(txt)
-    except Exception:
-        pass
-    try:
-        return json.loads(_repair_inner_quotes(txt))
-    except Exception:
-        if default is not None:
-            return default
-        raise LLMError(f"LLM 未返回合法 JSON：{raw[:300]}")
+
+    # 依次尝试：原文 → 修内层引号 → 修裸换行 → 两种修复叠加
+    # （顺序不固定，两种修复互有干扰，全试一遍最稳）
+    variants = [
+        txt,
+        _repair_inner_quotes(txt),
+        _repair_control_chars(txt),
+        _repair_control_chars(_repair_inner_quotes(txt)),
+        _repair_inner_quotes(_repair_control_chars(txt)),
+    ]
+    for v in variants:
+        try:
+            return json.loads(v)
+        except Exception:
+            continue
+
+    logger.warning("LLM 返回的 JSON 无法解析（前 200 字）：%s", raw[:200])
+    if default is not None:
+        return default
+    raise LLMError(f"LLM 未返回合法 JSON：{raw[:300]}")

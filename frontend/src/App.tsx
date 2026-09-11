@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GraduationCap, RefreshCw, AlertTriangle } from "lucide-react";
-import { api, type Doc, type DocType } from "./lib/api";
+import { api, pointsToMarkers, type Doc, type DocType } from "./lib/api";
 import { Button, Tabs } from "./components/ui";
 import { UploadZone } from "./components/UploadZone";
 import { DocList } from "./components/DocList";
-import { SummaryPanel } from "./components/SummaryPanel";
+import { SummaryHeadline, SummaryPanel } from "./components/SummaryPanel";
 import { ChatPanel } from "./components/ChatPanel";
 import { GrabberPanel } from "./components/GrabberPanel";
 import { SettingsDialog } from "./components/SettingsDialog";
+import { VideoPlayer, type VideoPlayerHandle } from "./components/VideoPlayer";
 
 const BUSY = ["uploaded", "parsing", "transcribing", "embedding", "summarizing"];
 
@@ -17,7 +18,8 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [err, setErr] = useState("");
   const [module, setModule] = useState<"study" | "grabber">("study");
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const playerRef = useRef<VideoPlayerHandle>(null);
+  const playerBoxRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -89,11 +91,8 @@ export default function App() {
   };
 
   const seek = (sec: number) => {
-    const el = videoRef.current;
-    if (!el) return;
-    el.currentTime = sec;
-    el.play().catch(() => {});
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    playerRef.current?.seek(sec);
+    playerBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
   return (
@@ -193,25 +192,27 @@ export default function App() {
                 </span>
               </div>
 
-              {/* 问答板块占 1/4（原为 1/2）；左侧为视频 + 总结分区 */}
+              {/* 问答板块占 1/4；左侧自上而下：一句话标题 → 视频窗口 → 时间轴/核心要点 */}
               <div className="grid min-h-0 flex-1 grid-cols-4">
                 <div className="col-span-3 min-h-0 space-y-3 overflow-y-auto border-r p-3">
+                  <SummaryHeadline
+                    doc={selected}
+                    onRetry={onRetry}
+                    onResummarize={onResummarize}
+                  />
+
                   {selected.type === "video" && selected.status === "ready" && (
-                    <div className="overflow-hidden rounded-xl border bg-black">
-                      <video
-                        ref={videoRef}
+                    <div ref={playerBoxRef}>
+                      <VideoPlayer
+                        ref={playerRef}
                         src={api.videoUrl(selected.id)}
-                        controls
-                        className="w-full"
-                        preload="metadata"
+                        markers={pointsToMarkers(selected.summary)}
                       />
                     </div>
                   )}
 
                   <SummaryPanel
                     doc={selected}
-                    onRetry={onRetry}
-                    onResummarize={onResummarize}
                     onSeek={selected.type === "video" ? seek : undefined}
                   />
                 </div>

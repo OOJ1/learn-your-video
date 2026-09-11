@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Send, Loader2, Globe, Link2, Play, BookOpen } from "lucide-react";
+import { Send, Loader2, Globe, Link2, Play, BookOpen, AlertTriangle } from "lucide-react";
 import { api, type Doc, type Ref } from "../lib/api";
 import { Button, Textarea } from "./ui";
 import { cn, fmtTime } from "../lib/utils";
@@ -11,6 +11,14 @@ interface Msg {
   content: string;
   refs?: Ref[];
   error?: boolean;
+  /** 本次回答是否真的联网了（后端 meta） */
+  usedWeb?: boolean;
+  engine?: string | null;
+  /** 未联网时的原因，如「资料已足够」「联网搜索已关闭」 */
+  reason?: string;
+  searchError?: string;
+  /** 本地资料相关度偏低，回答仅供参考 */
+  lowRelevance?: boolean;
 }
 
 export function ChatPanel({
@@ -65,7 +73,19 @@ export function ChatPanel({
       if (!r.ok && r.error) {
         setMsgs((m) => [...m, { role: "assistant", content: r.error!, error: true }]);
       } else {
-        setMsgs((m) => [...m, { role: "assistant", content: r.answer || "（无回答）", refs: r.refs }]);
+        setMsgs((m) => [
+          ...m,
+          {
+            role: "assistant",
+            content: r.answer || "（无回答）",
+            refs: r.refs,
+            usedWeb: r.used_web,
+            engine: r.engine,
+            reason: r.reason,
+            searchError: r.search_error,
+            lowRelevance: r.low_relevance,
+          },
+        ]);
       }
     } catch (e: any) {
       setMsgs((m) => [...m, { role: "assistant", content: `请求失败：${e?.message || e}`, error: true }]);
@@ -133,6 +153,33 @@ export function ChatPanel({
               )}
 
               {!!m.refs?.length && <RefList refs={m.refs} onSeek={onSeek} />}
+
+              {m.role === "assistant" && !m.error && (m.usedWeb || m.searchError || m.reason || m.lowRelevance) && (
+                <p className="mt-1.5 flex flex-wrap items-center gap-1 text-[11px]">
+                  {m.usedWeb ? (
+                    <span className="flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 text-emerald-700">
+                      <Globe className="h-3 w-3" />
+                      已联网检索（{m.engine}）
+                    </span>
+                  ) : m.searchError ? (
+                    <span className="flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-amber-700">
+                      <Globe className="h-3 w-3" />
+                      联网失败，仅依据本地资料：{m.searchError.slice(0, 60)}
+                    </span>
+                  ) : m.reason ? (
+                    <span className="text-muted-foreground">未联网：{m.reason}</span>
+                  ) : null}
+                  {m.lowRelevance && (
+                    <span
+                      className="flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-amber-700"
+                      title="该视频字幕与你的问题相似度偏低（短视频整段只有一个切片时常见），回答仅供参考"
+                    >
+                      <AlertTriangle className="h-3 w-3" />
+                      本地资料相关度低，回答仅供参考
+                    </span>
+                  )}
+                </p>
+              )}
             </div>
           </div>
         ))}

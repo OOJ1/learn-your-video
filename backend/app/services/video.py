@@ -13,6 +13,8 @@ logger = logging.getLogger("app.video")
 from app.config import get_settings
 from app.core.hf import ensure_hf_env
 from app.core.llm import LLMError, chat_json, get_llm
+from app.core.schema import normalize_notes, normalize_text
+from app.services.article import truncate_for_prompt
 from app.services.store import DocStatus, get_store
 from app.services.vector import get_vector_store
 
@@ -112,8 +114,13 @@ def transcribe(audio: Path, hotwords: str = "",
         initial_prompt = "以下是关于" + "、".join(hw) + "的语音内容。"
         extra["hotwords"] = " ".join(hw)  # faster-whisper >= 1.1 支持
 
-    common = dict(language=s.WHISPER_LANGUAGE, beam_size=5, vad_filter=True,
-                  initial_prompt=initial_prompt)
+    # language 缺省时交给 Whisper 自动检测语种。强制 zh 会让英文/中英混合视频
+    # 被中文解码器污染（本次巡检发现 43 分钟英文访谈被错误标为 zh）。
+    # WHISPER_LANGUAGE 留空或填 auto 即自动检测；填 zh/en/ja… 才强制指定。
+    lang_opt = (s.WHISPER_LANGUAGE or "").strip()
+    common = dict(beam_size=5, vad_filter=True, initial_prompt=initial_prompt)
+    if lang_opt and lang_opt.lower() != "auto":
+        common["language"] = lang_opt
     try:
         segments, info = model.transcribe(str(audio), **common, **extra)
     except TypeError:
@@ -121,7 +128,8 @@ def transcribe(audio: Path, hotwords: str = "",
         segments, info = model.transcribe(str(audio), **common)
 
     total = float(getattr(info, "duration", 0.0) or 0.0)
-    lang = str(getattr(info, "language", s.WHISPER_LANGUAGE))
+    # 以 Whisper 实际检测结果为准（auto 时 info.language 即检测语种）
+    lang = str(getattr(info, "language", None) or lang_opt or "auto")
     logger.info("Whisper 开始转写 %s (duration=%.1fs, lang=%s)", audio.name, total, lang)
 
     segs: list[dict] = []
@@ -187,85 +195,6 @@ def split_with_timestamps(segments: list[dict], chunk_size: int, overlap: int) -
     return out
 
 
-SEGMENT_SUMMARY_TEMPLATE = """下面是视频第 {t_start}~{t_end} 秒（{mmss_start}~{mmss_end}）这段时间的字幕。
-
-【字幕】
-{content}
-
-请用一句话（不超过 40 字）概括「这段时间在讲什么」，让没看过的人能知道这一段的内容。
-要求：只输出这句概括，不要序号、不要引号、不要用英文双引号（引用请用「」）。
-如果这段没有有效内容（纯静音、语气词、无意义重复），只输出：无有效内容。"""
-
-
-def _segments_from_transcript(transcript: str) -> list[dict]:
-    """从落盘的字幕文本（形如 [12.3s] 文本）反解析出 segments，供重算时间轴使用"""
-    segs: list[dict] = []
-    for line in transcript.splitlines():
-        m = re.match(r"\s*\[([\d.]+)s\]\s*(.+)", line)
-        if m:
-            segs.append({"start": float(m.group(1)), "end": float(m.group(1)) + 5.0,
-                         "text": m.group(2)})
-    for i in range(len(segs) - 1):
-        segs[i]["end"] = max(segs[i]["end"], segs[i + 1]["start"])
-    return segs
-
-
-def build_timeline(segments: list[dict], duration: float = 0.0,
-                   progress_cb=None, max_seconds: int | None = None,
-                   max_parts: int | None = None) -> list[dict]:
-    """把转写文本按时间窗口切成若干段，逐段让 LLM 概括 —— 覆盖整条时间轴。
-
-    与「核心要点」的区别：要点只挑重点，时间轴分段是均匀铺满全片，
-    用户能清楚知道每一段在讲什么，点击任意一段即可跳转。
-    """
-    if not segments:
-        return []
-    s = get_settings()
-    win = max_seconds or s.VIDEO_SEGMENT_SECONDS
-    cap = max_parts or s.VIDEO_SEGMENT_MAX
-    total = duration or max(g["end"] for g in segments)
-
-    # 窗口太密时自动加宽，避免长视频产生上百次 LLM 调用
-    win = max(win, total / max(1, cap))
-
-    total_steps = max(1, int(total // win) + (1 if total % win else 0))
-    logger.info("生成时间轴分段：总时长 %.0fs，窗口 %.0fs，约 %d 段", total, win, total_steps)
-
-    out: list[dict] = []
-    llm = get_llm()
-    for i in range(total_steps):
-        t0, t1 = i * win, (i + 1) * win
-        part = [g for g in segments if g["end"] > t0 and g["start"] < t1]
-        text = " ".join(g["text"] for g in part).strip()
-        if progress_cb:
-            progress_cb(min(1.0, (i + 1) / total_steps))
-        # 过短的片段（纯静音/语气词）跳过，不浪费一次大模型调用
-        if len(text) < 15:
-            continue
-        try:
-            summary = llm.chat([
-                {"role": "system", "content": "你是视频内容概括助手，只输出一句话概括。"},
-                {"role": "user", "content": SEGMENT_SUMMARY_TEMPLATE.format(
-                    t_start=int(t0), t_end=int(min(t1, total)),
-                    mmss_start=_fmt_clock(t0), mmss_end=_fmt_clock(min(t1, total)),
-                    content=text[:2000])},
-            ], temperature=0.0).strip()
-        except LLMError as e:
-            logger.warning("第 %d 段概括失败：%s", i + 1, e)
-            continue
-        summary = summary.strip().strip('"').strip("「」").strip()
-        if not summary or summary.startswith("无有效内容"):
-            continue
-        out.append({
-            "t_start": round(float(t0), 2),
-            "t_end": round(float(min(t1, total)), 2),
-            "text": summary.split("\n")[0][:60],
-        })
-
-    logger.info("时间轴分段完成：%d 段（跳过 %d 个空段）", len(out), total_steps - len(out))
-    return out
-
-
 def _fmt_clock(t: float) -> str:
     t = max(0, int(t))
     h, r = divmod(t, 3600)
@@ -306,8 +235,13 @@ VIDEO_SUMMARY_TEMPLATE = """以下是某个视频的完整字幕文本（每行�
 {{
   "video_type": "视频类型，如：知识教程/访谈对话/会议记录/产品评测/vlog/新闻评论/娱乐综艺/其他",
   "one_liner": "一句话概括这个视频在讲什么，不超过 60 字",
-  "key_points": [{{"t": 起始秒整数, "text": "核心要点1"}}, ... 3-8 条，每条 text 不超过 50 字],
-  "outline": [{{"t": 起始秒整数, "text": "内容脉络1"}}, ... 2-5 条，按视频推进顺序],
+  "key_points": [{{"t": 起始秒整数, "text": "核心要点1"}}, ... 3-6 条，每条 text 不超过 50 字],
+  "review": "你对这条视频的评价与看法，120-250 字。要有明确观点：内容讲得好在哪、有什么不足或争议、值不值得花时间看、最适合谁看；不要复述剧情或罗列内容，也不要说空话。",
+  "notes": [
+    {{"title": "笔记小节标题（如：核心观点 / 方法步骤 / 关键数据 / 值得记的结论）",
+      "points": ["这一节的知识点1", "知识点2"]}},
+    ... 2-4 个小节，每节 2-4 条
+  ],
   "tags": ["标签1", "... 2-5 个"],
   "value_score": {{
     "dimensions": {{
@@ -323,7 +257,10 @@ VIDEO_SUMMARY_TEMPLATE = """以下是某个视频的完整字幕文本（每行�
 }}
 
 要求：
-- key_points 与 outline 的每一项都必须带 "t" 字段：该要点在字幕中对应位置（或最近位置）的 [xx.xs] 秒数（整数），用于前端点击跳转视频；确实无法定位时给 null。
+- key_points 的每一项都必须带 "t" 字段：该要点在字幕中对应位置（或最近位置）的 [xx.xs] 秒数（整数），用于前端点击跳转视频；确实无法定位时给 null。
+- notes 要整理成「能直接当复习笔记用」的知识条目：自己归纳、重组成体系，不要照抄字幕原句；可以补充必要的背景、因果和推论。每节 points 请写成完整的一句话，不要只写关键词。
+- review 是评价而非总结：要敢于指出不足（如注水、观点陈旧、广告过多、结论跳跃），也要说明亮点。若内容确实平庸，直接说平庸，不要刻意恭维。
+- review 写成一段连续的文字，不要手动换行（换行会破坏 JSON）。
 - 文本内容中禁止使用英文双引号 \"（引用词语请用「」），否则会破坏 JSON 格式。
 - 评分：每个维度 0-20 的整数，五维之和即总分（0-100）。请严格依据字幕内容打分，不要一味给高分；娱乐类视频实用性可低但信息密度未必低。"""
 
@@ -384,13 +321,16 @@ def _normalize_score(data: dict) -> None:
 
 
 def _normalize_points(data: dict) -> None:
-    """规整 key_points / outline：统一为 {"t": 秒数|None, "text": str}。
+    """规整 key_points：统一为 {"t": 秒数|None, "text": str}。
 
     兼容三种 LLM 返回写法：字符串（无时间戳）、{"t":..,"text":..}、["12s 文本"] 等；
     同时兼容旧版本已落盘的纯字符串列表（前端点击逻辑按 t 为空降级为不可跳转）。
+    outline 是旧版字段，一并兜底规整，保证历史数据仍可渲染。
     """
     for field, limit in (("key_points", 8), ("outline", 5)):
         raw = data.get(field)
+        if raw is None and field == "outline":
+            continue  # outline 是旧版字段：模型没给就别凭空补一个空数组
         if not isinstance(raw, list):
             data[field] = []
             continue
@@ -412,21 +352,25 @@ def _normalize_points(data: dict) -> None:
 
 def generate_video_summary(transcript: str) -> dict:
     s = get_settings()
-    content = transcript[:s.MAX_ARTICLE_CHARS]
-    fallback = {"one_liner": "（摘要生成失败）", "key_points": [], "outline": [], "tags": [],
-                "value_score": None}
+    # 取首+尾而非截头：开头结论与结尾总结都要保留，同时给模型的输出留出上下文空间
+    content, _ = truncate_for_prompt(transcript, s.SUMMARY_INPUT_CHARS)
+    fallback = {"one_liner": "（摘要生成失败）", "key_points": [], "review": "", "notes": [],
+                "tags": [], "value_score": None}
     try:
         data = chat_json(get_llm(), [
             {"role": "system",
-             "content": "你是视频内容分析助手，能客观归纳任意类型的视频并给出含金量评分。"
+             "content": "你是视频内容分析助手，能客观归纳任意类型的视频、给出含金量评分，"
+                        "并写出一份有观点、可直接当复习笔记用的知识整理。"
                         "严格按 JSON 输出，不要 markdown 代码块。"},
             {"role": "user", "content": VIDEO_SUMMARY_TEMPLATE.format(content=content)},
-        ], default=fallback)
+        ], default=fallback, max_tokens=s.SUMMARY_MAX_TOKENS)
     except LLMError as e:
         data = dict(fallback)
         data["one_liner"] = f"（摘要生成失败：{e}）"
     _normalize_score(data)
     _normalize_points(data)
+    normalize_text(data, "review", 1200)
+    normalize_notes(data)
     return data
 
 
@@ -437,20 +381,11 @@ def regenerate_video_summary(doc_id: str) -> None:
     if not transcript.strip():
         raise VideoError("尚无转写文本，请点「重试」重跑完整流程")
 
-    # 顺带重算时间轴分段（要点也依赖转写，一并刷新保持同步）
-    segs = _segments_from_transcript(transcript)
-    if segs:
-        store.set_status(doc_id, DocStatus.SUMMARIZING, 62, "生成时间轴分段")
-        def _tl(ratio: float) -> None:
-            store.set_status(doc_id, DocStatus.SUMMARIZING, 62 + int(ratio * 20),
-                             f"生成时间轴分段 {int(ratio * 100)}%")
-        try:
-            doc = store.get_doc(doc_id) or {}
-            tl = build_timeline(segs, float(doc.get("duration") or 0), progress_cb=_tl)
-            doc["timeline"] = tl
-            store.save_doc(doc)
-        except Exception as e:
-            logger.warning("时间轴分段重算失败：%s", e)
+    # 时间戳已由摘要里的「核心要点」自带，无需再单独生成全片时间轴；
+    # 顺便清掉旧版遗留的 timeline 数据。
+    doc = store.get_doc(doc_id) or {}
+    if doc.pop("timeline", None) is not None:
+        store.save_doc(doc)
 
     store.set_status(doc_id, DocStatus.SUMMARIZING, 85, "重新生成摘要中")
     try:
@@ -513,15 +448,9 @@ def process_video(doc_id: str, video_path: Path, hotwords: str = "") -> None:
                    chars=len(transcript), subtitles=save_subtitles(doc_id, segments))
         store.save_doc(doc)
 
-        # 时间轴分段总结：覆盖全片各时间段，前端可逐段跳转
-        store.set_status(doc_id, DocStatus.EMBEDDING, 64, "生成时间轴分段")
-        def _tl_progress(ratio: float) -> None:
-            store.set_status(doc_id, DocStatus.EMBEDDING, 64 + int(ratio * 14),
-                             f"生成时间轴分段 {int(ratio * 100)}%")
-        timeline = build_timeline(segments, real_duration or duration,
-                                  progress_cb=_tl_progress)
-
-        store.set_status(doc_id, DocStatus.EMBEDDING, 78, "向量化中")
+        # 时间戳来源改为摘要里的「核心要点」（模型直接给出每条要点的起始秒数），
+        # 不再单独跑一遍全片分段概括，省掉长视频十几次模型调用。
+        store.set_status(doc_id, DocStatus.EMBEDDING, 64, "向量化中")
         chunks = split_with_timestamps(segments, s.CHUNK_SIZE, s.CHUNK_OVERLAP)
         get_vector_store().add_chunks(doc_id, chunks)
 
@@ -531,7 +460,8 @@ def process_video(doc_id: str, video_path: Path, hotwords: str = "") -> None:
         doc = store.get_doc(doc_id) or {}
         doc["summary"] = summary
         doc["chunks"] = len(chunks)
-        doc["timeline"] = timeline
+        # 旧版记录里的 timeline 字段不再生成；重跑一次即会自然清空
+        doc.pop("timeline", None)
         store.save_doc(doc)
         store.set_status(doc_id, DocStatus.READY, 100)
     except Exception as e:
