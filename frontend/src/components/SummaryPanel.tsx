@@ -12,6 +12,8 @@ import {
   AlertTriangle,
   Quote,
   StickyNote,
+  Eye,
+  Film,
 } from "lucide-react";
 import type { Doc, ValueScore, KeyPoint, Summary } from "../lib/api";
 import { asPoint } from "../lib/api";
@@ -47,7 +49,7 @@ function ScoreCard({ vs }: { vs: ValueScore }) {
   const pct = (n: number) => Math.min(100, Math.max(0, (n / 20) * 100));
 
   return (
-    <div className="rounded-xl border border-white/40 bg-white/30 p-3 backdrop-blur">
+    <div className="rounded-xl border border-white/60 bg-white/45 p-3 backdrop-blur shadow-[0_1px_2px_rgba(15,23,42,0.04),inset_0_1px_0_rgba(255,255,255,0.6)]">
       <div className="flex items-center gap-3">
         <div className="w-12 shrink-0 text-center">
           <div className="text-2xl font-bold leading-none">{vs.total}</div>
@@ -236,7 +238,24 @@ export function SummaryHeadline({
 }
 
 /**
- * 详情区（放在视频下方）：核心要点（带时间戳，可点击跳转）+ 评分 + 模型评价 + 知识笔记 + 标签。
+ * 主题标签：一排胶囊，默认展示在「一句话标题」下方。
+ */
+export function SummaryTags({ doc }: { doc: Doc }) {
+  const tags = doc.summary?.tags;
+  if (!tags?.length) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {tags.map((t) => (
+        <Badge key={t} variant="secondary">
+          {t}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * 详情区（放在视频下方）：核心要点（带时间戳，可点击跳转）+ 评分 + 模型评价 + 知识笔记。
  */
 export function SummaryPanel({
   doc,
@@ -251,8 +270,9 @@ export function SummaryPanel({
 
   const hasDetails =
     !!s.key_points?.length ||
+    !!s.visual_points?.length ||
+    !!doc.frames?.length ||
     !!s.outline?.length ||
-    !!s.tags?.length ||
     !!s.value_score ||
     !!doc.chars ||
     !!doc.duration;
@@ -279,6 +299,56 @@ export function SummaryPanel({
           </div>
         )}
 
+        {/* 画面要点：结合「看到的」——屏幕/画面上呈现的文字与图表 */}
+        {!!s.visual_points?.length && (
+          <div>
+            <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
+              <Eye className="h-3.5 w-3.5" />
+              画面要点
+              <span className="text-xs font-normal text-muted-foreground">
+                （画面中呈现的信息，点击时间戳跳转）
+              </span>
+            </p>
+            <ul className="space-y-1">
+              {s.visual_points.map((k, i) => (
+                <PointItem key={i} item={k} onSeek={onSeek} />
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* 关键帧缩略图：来自画面识别的抽帧，点击跳转到对应时间 */}
+        {!!doc.frames?.length && (
+          <div>
+            <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
+              <Film className="h-3.5 w-3.5" />
+              关键帧
+              <span className="text-xs font-normal text-muted-foreground">
+                （共 {doc.frames.length} 张，点击跳转）
+              </span>
+            </p>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {doc.frames.map((f, i) => (
+                <button
+                  key={i}
+                  onClick={() => onSeek?.(f.t)}
+                  title={`跳转到 ${fmtTime(f.t)}`}
+                  className="group relative h-16 w-28 shrink-0 overflow-hidden rounded-lg border border-white/50 bg-white/30"
+                >
+                  <img
+                    src={api.frameUrl(doc.id, f.file)}
+                    alt=""
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  />
+                  <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1 text-[10px] text-white">
+                    {fmtTime(f.t)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {s.value_score && <ScoreCard vs={s.value_score} />}
 
         {s.review ? (
@@ -288,7 +358,7 @@ export function SummaryPanel({
               模型评价
               <span className="text-xs font-normal text-muted-foreground">（对内容的看法）</span>
             </p>
-            <p className="rounded-lg border-l-2 border-primary/50 bg-white/30 p-3 text-sm leading-relaxed backdrop-blur">
+            <p className="rounded-lg border-l-2 border-primary/50 bg-white/45 p-3 text-sm leading-relaxed backdrop-blur">
               {s.review}
             </p>
           </div>
@@ -303,7 +373,7 @@ export function SummaryPanel({
             </p>
             <div className="space-y-2">
               {s.notes.map((n, i) => (
-                <div key={i} className="rounded-xl border border-white/40 bg-white/30 p-3 backdrop-blur">
+                <div key={i} className="rounded-xl border border-white/50 bg-white/40 p-3 backdrop-blur">
                   {n.title ? (
                     <p className="mb-1.5 text-xs font-semibold text-foreground/90">{n.title}</p>
                   ) : null}
@@ -335,16 +405,6 @@ export function SummaryPanel({
                 <PointItem key={i} item={o} onSeek={onSeek} />
               ))}
             </ol>
-          </div>
-        )}
-
-        {!!s.tags?.length && (
-          <div className="flex flex-wrap gap-1.5">
-            {s.tags.map((t) => (
-              <Badge key={t} variant="secondary">
-                {t}
-              </Badge>
-            ))}
           </div>
         )}
 

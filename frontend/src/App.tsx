@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { GraduationCap, RefreshCw, AlertTriangle } from "lucide-react";
+import { GraduationCap, RefreshCw, AlertTriangle, Sparkles } from "lucide-react";
 import { api, pointsToMarkers, type Doc, type DocType } from "./lib/api";
 import { Button, Tabs } from "./components/ui";
 import { UploadZone } from "./components/UploadZone";
 import { DocList } from "./components/DocList";
-import { SummaryHeadline, SummaryPanel } from "./components/SummaryPanel";
+import { SummaryHeadline, SummaryPanel, SummaryTags } from "./components/SummaryPanel";
 import { ChatPanel } from "./components/ChatPanel";
 import { GrabberPanel } from "./components/GrabberPanel";
 import { SettingsDialog } from "./components/SettingsDialog";
@@ -12,7 +12,7 @@ import { VideoPlayer, type VideoPlayerHandle } from "./components/VideoPlayer";
 
 const BUSY = ["uploaded", "parsing", "transcribing", "embedding", "summarizing"];
 
-export default function App() {
+export default function App({ onShowIntro }: { onShowIntro?: () => void }) {
   const [docs, setDocs] = useState<Doc[]>([]);
   const [tab, setTab] = useState<"all" | DocType>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -97,7 +97,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen flex-col">
-      <header className="flex items-center gap-2 border-b border-white/40 bg-white/40 px-4 py-2.5 backdrop-blur-xl">
+      <header className="flex items-center gap-2 border-b border-white/50 bg-white/45 px-4 py-2.5 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
         <GraduationCap className="h-5 w-5" />
         {/* 两个模块标题，点击来回切换 */}
         <button
@@ -124,6 +124,19 @@ export default function App() {
         >
           无法有效下载视频？点我试试！
         </button>
+
+        {/* 重新打开产品介绍页（滚动叙事） */}
+        {onShowIntro && (
+          <button
+            onClick={onShowIntro}
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-white/50"
+            title="重新看看「你的学习搭子」能做什么"
+          >
+            <Sparkles className="h-3 w-3" />
+            介绍一下自己
+          </button>
+        )}
+
         <div className="flex-1" />
         {err && (
           <span className="flex items-center gap-1 text-[11px] text-red-600">
@@ -147,7 +160,7 @@ export default function App() {
         />
       ) : (
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-80 shrink-0 flex-col border-r border-white/40 bg-white/30 backdrop-blur-xl">
+        <aside className="flex w-80 shrink-0 flex-col border-r border-white/50 bg-white/35 backdrop-blur-xl">
           <div className="border-b p-3">
             <UploadZone
               onUploaded={(d) => {
@@ -185,38 +198,44 @@ export default function App() {
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-2 border-b border-white/40 bg-white/30 px-4 py-2 backdrop-blur">
-                <span className="truncate text-sm font-medium">{selected.filename}</span>
-                <span className="rounded border border-white/50 bg-white/50 px-1.5 py-0.5 text-[11px] text-muted-foreground backdrop-blur">
-                  {selected.type === "video" ? "视频" : "文章"}
-                </span>
-              </div>
-
-              {/* 问答板块占 1/4；左侧自上而下：一句话标题 → 视频窗口 → 时间轴/核心要点 */}
+              {/* 左侧摘要列 + 右侧问答列；两列之间用边界线区分 */}
               <div className="grid min-h-0 flex-1 grid-cols-4">
-                <div className="col-span-3 min-h-0 space-y-3 overflow-y-auto border-r border-white/40 p-3">
-                  <SummaryHeadline
-                    doc={selected}
-                    onRetry={onRetry}
-                    onResummarize={onResummarize}
-                  />
+                {/* 左：摘要列（顶部文件名条仅限本列，不再延伸到右侧问答） */}
+                <div className="col-span-3 flex min-h-0 flex-col">
+                  <div className="flex h-11 shrink-0 items-center gap-2 border-b border-white/60 bg-white/40 px-4 backdrop-blur">
+                    <span className="truncate text-sm font-medium">{selected.filename}</span>
+                    <span className="rounded border border-white/50 bg-white/50 px-1.5 py-0.5 text-[11px] text-muted-foreground backdrop-blur">
+                      {selected.type === "video" ? "视频" : "文章"}
+                    </span>
+                  </div>
+                  <div className="flex-1 space-y-3 overflow-y-auto p-3">
+                    <SummaryHeadline
+                      doc={selected}
+                      onRetry={onRetry}
+                      onResummarize={onResummarize}
+                    />
 
-                  {selected.type === "video" && selected.status === "ready" && (
-                    <div ref={playerBoxRef}>
-                      <VideoPlayer
-                        ref={playerRef}
-                        src={api.videoUrl(selected.id)}
-                        markers={pointsToMarkers(selected.summary)}
-                      />
-                    </div>
-                  )}
+                    {/* 主题标签：紧跟在「一句话标题」下方 */}
+                    <SummaryTags doc={selected} />
 
-                  <SummaryPanel
-                    doc={selected}
-                    onSeek={selected.type === "video" ? seek : undefined}
-                  />
+                    {selected.type === "video" && selected.status === "ready" && (
+                      <div ref={playerBoxRef}>
+                        <VideoPlayer
+                          ref={playerRef}
+                          src={api.videoUrl(selected.id)}
+                          markers={pointsToMarkers(selected.summary)}
+                        />
+                      </div>
+                    )}
+
+                    <SummaryPanel
+                      doc={selected}
+                      onSeek={selected.type === "video" ? seek : undefined}
+                    />
+                  </div>
                 </div>
 
+                {/* 右：问答列（自带顶部「问答」条，与左侧以边界线区分） */}
                 <div className="min-h-0">
                   <ChatPanel doc={selected} onSeek={selected.type === "video" ? seek : undefined} />
                 </div>

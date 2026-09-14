@@ -1,0 +1,154 @@
+/* ============================================================
+   产品介绍 · 滚动叙事页（现代渐变风格）
+   独立于应用的玻璃拟态主题，使用 ld- 前缀，避免样式互相污染。
+   ============================================================ */
+
+.ld-root {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  overflow-y: auto;
+  overflow-x: hidden;
+  color: #eaeefb;
+  scroll-behavior: smooth;
+  background:
+    radial-gradient(70% 60% at 14% 8%, rgba(99, 102, 241, 0.34), transparent 60%),
+    radial-gradient(58% 52% at 86% 6%, rgba(34, 211, 238, 0.26), transparent 60%),
+    radial-gradient(72% 60% at 82% 96%, rgba(217, 70, 239, 0.26), transparent 60%),
+    radial-gradient(60% 55% at 12% 92%, rgba(16, 185, 129, 0.20), transparent 60%),
+    linear-gradient(160deg, #0a0f24 0%, #0d1330 46%, #0a1026 100%);
+  background-attachment: fixed;
+}
+
+/* ---------- 背景：漂浮极光球 + 网格 ---------- */
+.ld-orbs {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.ld-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(70px);
+  opacity: 0.55;
+  will-change: transform;
+}
+.ld-orb.a { width: 42vw; height: 42vw; left: -8vw; top: -6vw;
+  background: radial-gradient(circle, #6366f1, transparent 62%); animation: ldFloatA 17s ease-in-out infinite alternate; }
+.ld-orb.b { width: 36vw; height: 36vw; right: -6vw; top: 4vh;
+  background: radial-gradient(circle, #22d3ee, transparent 62%); animation: ldFloatB 21s ease-in-out infinite alternate; }
+.ld-orb.c { width: 40vw; height: 40vw; left: 28vw; bottom: -16vw;
+  background: radial-gradient(circle, #d946ef, transparent 64%); animation: ldFloatC 25s ease-in-out infinite alternate; }
+.ld-orb.d { width: 30vw; height: 30vw; left: 4vw; bottom: 6vh;
+  background: radial-gradient(circle, #10b981, transparent 64%); animation: ldFloatA 23s ease-in-out infinite alternate; }
+
+@keyframes ldFloatA { from { transform: translate(0, 0) scale(1); } to { transform: translate(5vw, 6vh) scale(1.14); } }
+@keyframes ldFloatB { from { transform: translate(0, 0) scale(1.08); } to { transform: translate(-6vw, 8vh) scale(0.96); } }
+@keyframes ldFloatC { from { transform: translate(0, 0) scale(0.96); } to { transform: translate(-7vw, -6vh) scale(1.16); } }
+
+.ld-grid {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 56px 56px;
+  -webkit-mask-image: radial-gradient(72% 62% at 50% 26%, #000 32%, transparent 80%);
+  mask-image: radial-gradient(72% 62% at 50% 26%, #000 32%, transparent 80%);
+}
+
+/* ---------- 顶部滚动进度条 ---------- */
+.ld-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 3px;
+  z-index: 200;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(90deg, #6366f1, #22d3ee, #a855f7, #d946ef);
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.75);
+}
+
+/* ---------- 玻璃卡片 ---------- */
+.ld-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transition: border-color 0.3s ease, background 0.3s ease, transform 0.3s ease;
+}
+.ld-card:hover {
+  border-color: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.075);
+}
+
+/* ---------- 滚动触发动效 ---------- */
+.ld-reveal {
+  opacity: 0;
+  transition:
+    opacity 0.75s cubic-bezier(0.22, 0.61, 0.36, 1),
+    transform 0.75s cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: opacity, transform;
+}
+.ld-up { transform: translateY(38px); }
+.ld-left { transform: translateX(-52px); }
+.ld-right { transform: translateX(52px); }
+.ld-zoom { transform: scale(0.9); }
+.ld-in { opacity: 1; transform: none; }
+
+/* ---------- 渐变文字 / 渐变按钮 ---------- */
+.ld-grad-text {
+  background: linear-gradient(100deg, #a5b4fc, #67e8f9 42%, #f0abfc);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.ld-cta-grad {
+  background: linear-gradient(120deg, #6366f1, #22d3ee, #a855f7, #d946ef, #6366f1);
+  background-size: 300% 300%;
+  animation: ldGrad 9s ease infinite;
+}
+@keyframes ldGrad {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* ---------- 「vv」紧排成 w ----------
+   两个 v 负字距后笔画相接，视觉上就是一个 w；末尾多出的那点负字距用
+   margin-right 抵消掉，免得后面的 + 号被吸得过近。 */
+.ld-vv {
+  display: inline-block;
+  letter-spacing: -0.145em;
+  margin-right: 0.145em;
+}
+
+/* ---------- 打字机光标 ---------- */
+.ld-caret {
+  display: inline-block;
+  width: 3px;
+  margin-left: 3px;
+  border-radius: 2px;
+  background: linear-gradient(#22d3ee, #6366f1);
+  vertical-align: -0.12em;
+  animation: ldBlink 1s steps(1) infinite;
+}
+@keyframes ldBlink { 50% { opacity: 0; } }
+
+.ld-bounce { animation: ldBounce 1.8s ease-in-out infinite; }
+@keyframes ldBounce {
+  0%, 100% { transform: translateY(0); opacity: 0.65; }
+  50% { transform: translateY(9px); opacity: 1; }
+}
+
+/* ---------- 移动端 / 无障碍 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .ld-orb, .ld-cta-grad, .ld-caret, .ld-bounce { animation: none !important; }
+  .ld-reveal { transition: none; opacity: 1; transform: none; }
+  .ld-root { scroll-behavior: auto; }
+}

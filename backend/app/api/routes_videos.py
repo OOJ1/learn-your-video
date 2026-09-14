@@ -5,6 +5,7 @@ import json
 import logging
 import pathlib
 import re
+import shutil
 from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
@@ -109,6 +110,19 @@ def stream_video(doc_id: str):
                         filename=d.get("filename", p.name))
 
 
+@router.get("/{doc_id}/frames/{name}")
+def get_frame(doc_id: str, name: str):
+    """返回画面识别抽出的关键帧图片（缩略图），供前端「关键帧」区展示。"""
+    d = get_store().get_doc(doc_id)
+    if not d:
+        raise HTTPException(404, "视频不存在")
+    safe = pathlib.Path(name).name           # 防目录穿越
+    p = get_settings().data_path / "frames" / doc_id / safe
+    if not p.exists():
+        raise HTTPException(404, "画面不存在")
+    return FileResponse(str(p), media_type="image/jpeg")
+
+
 @router.get("/{doc_id}/subtitles")
 def get_subtitles(doc_id: str):
     d = get_store().get_doc(doc_id)
@@ -191,6 +205,8 @@ def delete_video(doc_id: str):
         pathlib.Path(p).unlink(missing_ok=True)
     audio = get_settings().data_path / "audio" / f"{doc_id}.wav"
     audio.unlink(missing_ok=True)
+    # 画面识别抽出的关键帧目录一并清理
+    shutil.rmtree(get_settings().data_path / "frames" / doc_id, ignore_errors=True)
     try:
         get_vector_store().delete_doc(doc_id)
     except Exception as e:

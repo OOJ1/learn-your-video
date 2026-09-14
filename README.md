@@ -55,7 +55,8 @@ E:\study-buddy\
 │       ├── lib/                 # api 客户端、工具函数
 │       ├── App.tsx              # 左右分栏主页面
 │       └── index.css            # Tailwind + 自定义主题
-├── start.ps1                    # Windows 一键启动
+├── start.ps1                    # Windows 一键启动（后台无窗口）
+├── stop.ps1                     # 关闭后端 + 前端
 ├── logs/                        # 后端 + 前端运行日志
 ├── PROGRESS.md                  # 阶段交付记录
 └── README.md
@@ -79,8 +80,17 @@ ollama pull qwen3.5:9b            # 或更轻的 qwen2.5:7b
 
 ```powershell
 cd E:\study-buddy
-.\start.ps1
+.\start.ps1          # 后台启动（无黑窗），日志写入 logs\
 ```
+
+停止：
+
+```powershell
+.\stop.ps1
+```
+
+> 两个服务以隐藏窗口方式后台运行，不会再弹出 cmd 窗口；
+> 再次执行 `start.ps1` 会自动清理占用 8000/5173 的旧实例。
 
 或手动：
 
@@ -94,7 +104,41 @@ cd E:\study-buddy\frontend && npx vite --host 127.0.0.1
 
 打开 <http://127.0.0.1:5173>
 
-### 3. 自检
+### 3. 长视频提速（默认已开启，无需安装）
+
+转写是长视频耗时的绝对大头。本机实测（8 分 14 秒音频、`small` 模型）：
+
+| 设备 | 转写耗时 | RTF |
+|---|---|---|
+| CPU（int8） | 106.1s | 0.214 |
+| **GPU（int8_float16）** | **16.9s** | **0.034** |
+
+**默认就是 `WHISPER_DEVICE=auto`，会自动按顺序找 CUDA 12 运行库**：
+
+1. `backend\.env` 里显式配置的 `WHISPER_CUDA_DLL_DIR`；
+2. venv 里的 `nvidia-*-cu12` 轮子（`site-packages/nvidia/*/bin`）；
+3. **本机 Ollama 自带的 `lib/ollama/cuda_v12`** —— 零下载，本机已实测可用（与 Ollama 同时占用
+   显卡也没问题：Ollama 常驻 6.4G 时 Whisper 仍能正常转写）。
+
+三者都找不到才退回 CPU。**加载时会用 1 秒静音做一次真实自检，失败自动退回 CPU** ——
+所以缺库不会让转写整个失败（ctranslate2 是「模型能加载、一推理才报错」，不实测会踩坑）。
+
+当前配置下不需要装任何东西。若你不想依赖 Ollama 的库，可自行安装官方运行时：
+
+```powershell
+E:\study-buddy\.venv\Scripts\pip install nvidia-cublas-cu12 nvidia-cudnn-cu12 nvidia-cuda-runtime-cu12
+```
+
+其它可调项（`backend\.env`）：
+
+```ini
+WHISPER_DEVICE=auto          # cpu / cuda / auto
+WHISPER_COMPUTE_TYPE=        # 留空 = cuda→int8_float16 / cpu→int8
+WHISPER_BEAM_SIZE=5          # CPU 上想再快约 1/3 可设 1（精度略降）
+WHISPER_CUDA_DLL_DIR=        # 手动指定 CUDA 运行库目录
+```
+
+### 4. 自检
 
 ```powershell
 E:\study-buddy\.venv\Scripts\python.exe E:\study-buddy\backend\scripts\check_env.py

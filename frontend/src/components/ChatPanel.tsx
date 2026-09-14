@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Send, Loader2, Globe, Link2, Play, BookOpen, AlertTriangle } from "lucide-react";
+import { Send, Loader2, Globe, Link2, Play, BookOpen, AlertTriangle, Eye } from "lucide-react";
 import { api, type Doc, type Ref } from "../lib/api";
 import { Button, Textarea } from "./ui";
 import { cn, fmtTime } from "../lib/utils";
@@ -96,7 +96,7 @@ export function ChatPanel({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-white/40 bg-white/30 px-3 py-2 backdrop-blur">
+      <div className="flex h-11 shrink-0 items-center justify-between border-b border-white/60 bg-white/40 px-4 backdrop-blur">
         <span className="text-xs font-semibold">问答</span>
         <div className="flex items-center gap-1">
           {(["auto", "on", "off"] as const).map((v) => {
@@ -138,10 +138,10 @@ export function ChatPanel({
               className={cn(
                 "max-w-[85%] rounded-xl px-3 py-2",
                   m.role === "user"
-                  ? "bg-primary text-primary-foreground"
+                  ? "bg-gradient-to-b from-slate-800 to-slate-900 text-primary-foreground shadow-[0_2px_8px_rgba(15,23,42,0.24)]"
                   : m.error
                   ? "bg-red-500/10 text-red-700"
-                  : "border border-white/50 bg-white/40 backdrop-blur"
+                  : "border border-white/70 bg-white/55 backdrop-blur shadow-[0_1px_2px_rgba(15,23,42,0.05),inset_0_1px_0_rgba(255,255,255,0.7)]"
               )}
             >
               {m.role === "user" ? (
@@ -193,7 +193,7 @@ export function ChatPanel({
         <div ref={bottomRef} />
       </div>
 
-      <div className="border-t border-white/40 bg-white/30 p-2 backdrop-blur">
+      <div className="border-t border-white/60 bg-white/40 p-2 backdrop-blur">
         <div className="flex items-end gap-2">
           <Textarea
             value={q}
@@ -234,6 +234,15 @@ function RefList({ refs, onSeek }: { refs: Ref[]; onSeek?: (sec: number) => void
               <Globe className="mt-px h-3 w-3 shrink-0" />
               <span className="line-clamp-2">{r.label || r.url}</span>
             </a>
+          ) : r.kind === "visual" && r.start != null ? (
+            <button
+              onClick={() => onSeek?.(r.start!)}
+              className="flex items-start gap-1 text-left text-violet-600 hover:underline"
+              title={r.snippet}
+            >
+              <Eye className="mt-px h-3 w-3 shrink-0" />
+              <span>{fmtTime(r.start)} · 画面</span>
+            </button>
           ) : r.kind === "video" && r.start != null ? (
             <button
               onClick={() => onSeek?.(r.start!)}

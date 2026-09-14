@@ -71,12 +71,43 @@ class Settings(BaseSettings):
 
     # ---------- ASR ----------
     WHISPER_MODEL_SIZE: str = "small"
-    WHISPER_DEVICE: str = "cpu"
-    WHISPER_COMPUTE_TYPE: str = "int8"
+    # cpu / cuda / auto。auto = 先看有没有可用的 NVIDIA GPU，有就用，并在首次加载时
+    # 做一次真实自检；自检不通过（缺 cuBLAS/cuDNN、显存不足等）自动退回 CPU。
+    # 长视频上 GPU 与 CPU 是数量级差距，但「有显卡」不等于「能跑」——ctranslate2 缺
+    # 运行时库时是推理阶段才报错，所以这里必须实测而不是只看设备数。
+    WHISPER_DEVICE: str = "auto"
+    # 留空 = 按设备自动选（cuda → int8_float16，cpu → int8）
+    WHISPER_COMPUTE_TYPE: str = ""
+    # 额外的 CUDA 运行库目录（含 cublas64_12.dll 等）。
+    # 留空时自动查找：venv 里的 nvidia-*-cu12 轮子 → 本机 Ollama 自带的 cuda_v12。
+    WHISPER_CUDA_DLL_DIR: str = ""
+    # 解码束宽：越大越准、越慢。CPU 上设 1 约省 1/3 时间，GPU 上影响很小。
+    WHISPER_BEAM_SIZE: int = 5
     # auto/空 = 让 Whisper 自动检测语种（中英混合、纯英文视频必须用 auto）；
     # 填具体代码(zh/en/ja…)才会强制，强制错误语种会让转写被污染甚至产生幻觉文本。
     WHISPER_LANGUAGE: str = "auto"
     FFMPEG_PATH: str = ""
+
+    # ---------- 视频画面识别（Vision）----------
+    # 抽帧后交给视觉模型描述画面（幻灯片/图表/表格/屏幕文字/场景），再与字幕一起送进摘要，
+    # 让总结同时覆盖「听到的」和「看到的」。
+    #
+    # 默认「跟随主模型」：VISION_PROVIDER 留空则用 LLM_PROVIDER，VISION_MODEL 留空则用该
+    # provider 的主模型。只要主模型支持视觉（ollama 下的 qwen3.5 / qwen2.5vl / llava /
+    # minicpm-v 等），无需任何额外配置即可开箱可用。
+    # 想「文字用 A 模型、画面用 B 模型」时，显式设置下面两项即可（例如文字走 DeepSeek、
+    # 画面走本地 Ollama 的视觉模型）。
+    # 视觉模型不可用或调用失败时不会中断流程：自动降级为「仅字幕」摘要。
+    VISION_ENABLED: bool = True
+    VISION_PROVIDER: str = ""              # ollama | openai；空 = 跟随 LLM_PROVIDER
+    VISION_MODEL: str = ""                 # 空 = 复用该 provider 的主模型（需支持视觉）
+    VISION_BASE_URL: str = ""              # 空则复用 OLLAMA_BASE_URL / OPENAI_BASE_URL
+    VISION_API_KEY: str = ""               # 空则复用 OLLAMA_API_KEY / OPENAI_API_KEY
+    VISION_FRAME_INTERVAL: int = 30        # 目标抽帧间隔（秒），实际帧数受 VISION_MAX_FRAMES 限制
+    VISION_MAX_FRAMES: int = 20            # 单视频最多分析帧数（控制耗时与成本）
+    VISION_FRAME_WIDTH: int = 768          # 抽帧缩放宽度，越小越省 token
+    VISION_BATCH: int = 4                  # 每次请求送几张画面
+    VISION_MAX_TOKENS: int = 1500          # 单次画面描述的输出上限
 
     # ---------- RAG ----------
     MAX_ARTICLE_CHARS: int = 24000

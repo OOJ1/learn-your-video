@@ -73,9 +73,9 @@ export function SettingsDialog() {
       </Button>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-8">
-          <div className="max-h-full w-full max-w-lg overflow-y-auto rounded-2xl border border-white/60 bg-white/70 shadow-2xl backdrop-blur-2xl">
-            <div className="flex items-center gap-2 border-b border-white/40 px-4 py-3">
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/35 p-8 backdrop-blur-sm">
+          <div className="max-h-full w-full max-w-lg overflow-y-auto rounded-2xl border border-white/70 bg-white/80 shadow-[0_24px_70px_rgba(15,23,42,0.3),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-2xl">
+            <div className="flex items-center gap-2 border-b border-white/50 px-4 py-3">
               <Settings className="h-4 w-4" />
               <span className="text-sm font-semibold">设置中心</span>
               <div className="flex-1" />

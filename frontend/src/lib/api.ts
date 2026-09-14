@@ -32,6 +32,8 @@ export interface NoteSection {
 export interface Summary {
   one_liner?: string;
   key_points?: (string | KeyPoint)[];
+  /** 画面要点：视频画面中呈现的关键信息（含屏幕文字/图表） */
+  visual_points?: (string | KeyPoint)[];
   /** 模型对内容的评价与看法 */
   review?: string;
   /** 知识笔记（替代旧版 outline 内容脉络） */
@@ -91,12 +93,16 @@ export interface Doc {
   language?: string;
   hotwords?: string;
   summary?: Summary | null;
+  /** 画面识别：按时间排序的画面描述（屏幕上呈现的内容） */
+  visual_timeline?: { t: number; text: string }[];
+  /** 画面识别抽出的关键帧，file 用于 /frames/{file} 缩略图 */
+  frames?: { t: number; file: string }[];
   error?: string;
 }
 
 export interface Ref {
   index: number;
-  kind: "article" | "video" | "web";
+  kind: "article" | "video" | "visual" | "web";
   label: string;
   doc_id?: string | null;
   start?: number | null;
@@ -170,6 +176,7 @@ export const api = {
   exportUrl: (t: DocType, id: string) => `${BASE}/api/${plural(t)}/${id}/export`,
   srtUrl: (id: string) => `${BASE}/api/videos/${id}/srt`,
   videoUrl: (id: string) => `${BASE}/api/videos/${id}/file`,
+  frameUrl: (id: string, file: string) => `${BASE}/api/videos/${id}/frames/${file}`,
   subtitles: (id: string) =>
     req<{ segments: { start: number; end: number; text: string }[] }>(
       `/api/videos/${id}/subtitles`

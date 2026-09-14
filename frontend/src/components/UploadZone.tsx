@@ -56,8 +56,10 @@ export function UploadZone({ onUploaded }: { onUploaded: (d: Doc) => void }) {
           pick(e.dataTransfer.files?.[0]);
         }}
         onClick={() => inputRef.current?.click()}
-        className={`flex cursor-pointer flex-col items-center gap-1 rounded-xl border-2 border-dashed p-4 text-center transition-colors backdrop-blur ${
-          dragging ? "border-primary bg-white/60" : "border-white/50 hover:bg-white/50"
+        className={`flex cursor-pointer flex-col items-center gap-1 rounded-xl border-2 border-dashed p-4 text-center transition-all duration-200 backdrop-blur ${
+          dragging
+            ? "border-indigo-400 bg-white/65 shadow-[0_2px_12px_rgba(15,23,42,0.1)]"
+            : "border-white/60 bg-white/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] hover:bg-white/55"
         }`}
       >
         <UploadCloud className="h-5 w-5 text-muted-foreground" />
@@ -65,10 +67,6 @@ export function UploadZone({ onUploaded }: { onUploaded: (d: Doc) => void }) {
           拖拽文件到此处，或<span className="text-foreground underline-offset-2 hover:underline">点击选择</span>
         </p>
         <p className="text-[11px] text-muted-foreground">文章：txt / md / pdf　视频：mp4 / mov / mkv</p>
-        <p className="mt-0.5 rounded-md bg-amber-50 px-2 py-1 text-[10px] leading-snug text-amber-700">
-          提示：本工具靠「听懂内容」来总结，纯画面、无解说、只有背景音乐的视频提取不到有效信息。
-          建议上传<b>有人讲解、访谈、课程、会议</b>这类带对话解说的内容，效果最好。
-        </p>
         <input
           ref={inputRef}
           type="file"
@@ -79,7 +77,7 @@ export function UploadZone({ onUploaded }: { onUploaded: (d: Doc) => void }) {
       </div>
 
       {file && (
-        <div className="space-y-2 rounded-lg border border-white/50 bg-white/40 p-2 backdrop-blur">
+        <div className="space-y-2 rounded-lg border border-white/60 bg-white/50 p-2 backdrop-blur shadow-[0_1px_2px_rgba(15,23,42,0.05),inset_0_1px_0_rgba(255,255,255,0.65)]">
           <div className="flex items-center gap-2 text-xs">
             {type === "video" ? (
               <Video className="h-3.5 w-3.5 shrink-0" />

@@ -34,8 +34,11 @@ class VectorStore:
         except Exception as e:
             raise VectorStoreError(f"ChromaDB 初始化失败：{e}") from e
 
-    def add_chunks(self, doc_id: str, chunks: list[dict]) -> int:
-        """chunks: [{"text":str, "start":float, "end":float, "index":int}, ...]"""
+    def add_chunks(self, doc_id: str, chunks: list[dict], kind: str = "subtitle") -> int:
+        """chunks: [{"text":str, "start":float, "end":float, "index":int}, ...]
+
+        kind 区分来源：subtitle=字幕切片，visual=画面识别结果。
+        """
         if not chunks:
             return 0
         texts = [c["text"] for c in chunks]
@@ -45,6 +48,7 @@ class VectorStore:
             "start": float(c.get("start", 0.0)),
             "end": float(c.get("end", 0.0)),
             "index": int(c.get("index", i)),
+            "kind": kind,
         } for i, c in enumerate(chunks)]
 
         emb = get_embedder().embed_documents(texts)

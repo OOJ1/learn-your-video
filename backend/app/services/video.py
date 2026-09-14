@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -17,6 +18,7 @@ from app.core.schema import normalize_notes, normalize_text
 from app.services.article import truncate_for_prompt
 from app.services.store import DocStatus, get_store
 from app.services.vector import get_vector_store
+from app.services.vision import analyze_video
 
 _whisper = None
 
@@ -79,16 +81,187 @@ def get_whisper():
         from faster_whisper import WhisperModel
     except ImportError as e:
         raise VideoError("未安装 faster-whisper，请执行 pip install faster-whisper") from e
+
+    device, compute = _pick_whisper_device()
+    threads = _cpu_threads()
     try:
         _whisper = WhisperModel(
             s.WHISPER_MODEL_SIZE,
-            device=s.WHISPER_DEVICE,
-            compute_type=s.WHISPER_COMPUTE_TYPE,
+            device=device,
+            compute_type=compute,
             download_root=str(s.data_path / "models"),
+            cpu_threads=threads,
         )
     except Exception as e:
-        raise VideoError(f"Whisper 模型加载失败（{s.WHISPER_MODEL_SIZE}）：{e}") from e
+        if device == "cpu":
+            raise VideoError(f"Whisper 模型加载失败（{s.WHISPER_MODEL_SIZE}）：{e}") from e
+        logger.warning("Whisper 以 %s/%s 加载失败，改用 CPU：%s", device, compute, e)
+        device, compute = "cpu", "int8"
+        _whisper = WhisperModel(
+            s.WHISPER_MODEL_SIZE,
+            device=device,
+            compute_type=compute,
+            download_root=str(s.data_path / "models"),
+            cpu_threads=threads,
+        )
+
+    # GPU 自检：ctranslate2 缺 cuBLAS/cuDNN 时模型能加载成功，但一推理就抛
+    # 「Library cublas64_12.dll is not found」。不实测的话整个转写会直接失败，
+    # 所以这里用 1 秒静音跑一次最小推理，失败则退回 CPU。
+    if device != "cpu":
+        try:
+            _probe_whisper(_whisper)
+            logger.info("Whisper GPU 自检通过")
+        except Exception as e:
+            logger.warning("Whisper GPU 自检失败（%s: %s），退回 CPU 转写", type(e).__name__, e)
+            device, compute = "cpu", "int8"
+            _whisper = WhisperModel(
+                s.WHISPER_MODEL_SIZE,
+                device=device,
+                compute_type=compute,
+                download_root=str(s.data_path / "models"),
+                cpu_threads=threads,
+            )
+
+    logger.info("Whisper 就绪：device=%s compute=%s beam=%d threads=%d",
+                device, compute, s.WHISPER_BEAM_SIZE, threads)
     return _whisper
+
+
+def _cpu_threads() -> int:
+    """CPU 转写线程数：默认用物理核心数的一半左右，留出余量给前端与视觉模型。"""
+    return max(4, (os.cpu_count() or 8) // 2)
+
+
+_dll_handles: list = []
+_dll_dirs_ready = False
+
+
+def _cuda_dll_candidates() -> list[Path]:
+    """可能的 CUDA 12 运行库目录（按优先级）。
+
+    1. 显式配置 WHISPER_CUDA_DLL_DIR
+    2. venv 里 nvidia-*-cu12 轮子的 bin（pip install nvidia-cublas-cu12 nvidia-cudnn-cu12）
+    3. 本机 Ollama 自带的 cuda_v12 —— Ollama 会随包分发 cuBLAS/cudart，
+       实测 ctranslate2 可以直接用，等于零下载就能开 GPU，所以作为兜底来源。
+    """
+    out: list[Path] = []
+
+    s = get_settings()
+    explicit = (s.WHISPER_CUDA_DLL_DIR or "").strip()
+    if explicit:
+        p = Path(explicit)
+        if p.is_dir():
+            out.append(p)
+        else:
+            logger.warning("WHISPER_CUDA_DLL_DIR 不存在：%s", p)
+
+    # pip 轮子：site-packages/nvidia/<lib>/bin
+    try:
+        import ctranslate2
+        site = Path(ctranslate2.__file__).resolve().parent.parent
+        out.extend(sorted(d for d in (site / "nvidia").glob("*/bin") if d.is_dir()))
+    except Exception:
+        pass
+
+    # Ollama 自带
+    ollama_roots: list[Path] = []
+    exe = shutil.which("ollama")
+    if exe:
+        ollama_roots.append(Path(exe).resolve().parent)
+    for env_key in ("LOCALAPPDATA", "ProgramFiles", "ProgramFiles(x86)"):
+        base = os.environ.get(env_key)
+        if base:
+            ollama_roots.append(Path(base) / "Ollama")
+            ollama_roots.append(Path(base) / "Programs" / "Ollama")
+    # 用户可能把 Ollama 装到自定义盘（本机就是 E:\Ollama），逐条扫 PATH 找同级 lib/ollama
+    for entry in (os.environ.get("PATH") or "").split(os.pathsep):
+        if entry and "ollama" in entry.lower():
+            ollama_roots.append(Path(entry))
+    for root in ollama_roots:
+        try:
+            cand = root / "lib" / "ollama" / "cuda_v12"
+            if cand.is_dir() and cand not in out:
+                out.append(cand)
+        except OSError:
+            continue
+
+    # 去重且保持顺序
+    seen: set[str] = set()
+    uniq: list[Path] = []
+    for d in out:
+        key = str(d).lower()
+        if key not in seen:
+            seen.add(key)
+            uniq.append(d)
+    return uniq
+
+
+def _enable_nvidia_dll_dirs() -> list[Path]:
+    """把 CUDA 12 运行库目录注册进 DLL 搜索路径（只做一次）。
+
+    不注册的话 ctranslate2 会报「Library cublas64_12.dll is not found or cannot be loaded」——
+    注意这个错是推理时才抛的，模型加载看不出来，所以调用方必须配合自检。
+    """
+    global _dll_dirs_ready
+    if _dll_dirs_ready:
+        return []
+
+    dirs = _cuda_dll_candidates()
+    for d in dirs:
+        try:
+            if hasattr(os, "add_dll_directory"):
+                _dll_handles.append(os.add_dll_directory(str(d)))
+            os.environ["PATH"] = str(d) + os.pathsep + os.environ.get("PATH", "")
+        except Exception as e:
+            logger.debug("注册 CUDA 运行时目录失败 %s：%s", d, e)
+    _dll_dirs_ready = True
+    if dirs:
+        logger.info("已注册 CUDA 运行库目录：%s", "; ".join(str(d) for d in dirs))
+    return dirs
+
+
+def _pick_whisper_device() -> tuple[str, str]:
+    """决定转写设备与计算精度；WHISPER_DEVICE=auto 时优先 GPU。"""
+    s = get_settings()
+    want = (s.WHISPER_DEVICE or "auto").lower().strip()
+    compute = (s.WHISPER_COMPUTE_TYPE or "").strip()
+
+    if want == "cpu":
+        return "cpu", compute or "int8"
+    if want in ("cuda", "gpu"):
+        _enable_nvidia_dll_dirs()
+        return "cuda", compute or "int8_float16"
+
+    # auto：有 CUDA 设备就先用（随后还有一次真实自检），否则 CPU
+    _enable_nvidia_dll_dirs()
+    try:
+        import ctranslate2
+        if ctranslate2.get_cuda_device_count() > 0:
+            return "cuda", compute or "int8_float16"
+    except Exception as e:
+        logger.debug("CUDA 探测失败，使用 CPU：%s", e)
+    return "cpu", compute or "int8"
+
+
+def _probe_whisper(model) -> None:
+    """用 1 秒静音做一次最小推理，确认模型真的能跑（惰性生成器必须迭代到）。"""
+    import tempfile
+    import wave
+
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+        tmp = Path(f.name)
+    try:
+        with wave.open(str(tmp), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(16000)
+            w.writeframes(b"\x00\x00" * 16000)  # 16000 帧 * 2 字节 = 1 秒
+        segments, _ = model.transcribe(str(tmp), beam_size=1, vad_filter=False)
+        for _ in segments:
+            break
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def parse_hotwords(raw: str) -> list[str]:
@@ -118,7 +291,8 @@ def transcribe(audio: Path, hotwords: str = "",
     # 被中文解码器污染（本次巡检发现 43 分钟英文访谈被错误标为 zh）。
     # WHISPER_LANGUAGE 留空或填 auto 即自动检测；填 zh/en/ja… 才强制指定。
     lang_opt = (s.WHISPER_LANGUAGE or "").strip()
-    common = dict(beam_size=5, vad_filter=True, initial_prompt=initial_prompt)
+    common = dict(beam_size=max(1, int(s.WHISPER_BEAM_SIZE or 5)),
+                  vad_filter=True, initial_prompt=initial_prompt)
     if lang_opt and lang_opt.lower() != "auto":
         common["language"] = lang_opt
     try:
@@ -226,7 +400,7 @@ def to_srt(segments: list[dict]) -> str:
     )
 
 
-VIDEO_SUMMARY_TEMPLATE = """以下是某个视频的完整字幕文本（每行开头 [xx.xs] 是该句在视频中的起始秒数）。视频可能是任意类型（知识教程、访谈对话、会议记录、产品评测、vlog、新闻评论、娱乐综艺、广告带货等），请先判断类型，再按该类型的特点做内容归纳，不要预设它是教学视频。
+VIDEO_SUMMARY_TEMPLATE = """以下是某个视频的内容素材：主体是完整字幕文本（每行开头 [xx.xs] 是该句在视频中的起始秒数）；如果这个视频做过画面识别，末尾还会附一段【画面识别】（同样带 [xx.xs] 秒数）。视频可能是任意类型（知识教程、访谈对话、会议记录、产品评测、vlog、新闻评论、娱乐综艺、广告带货等），请先判断类型，再结合「听到的」与「看到的」做内容归纳，不要预设它是教学视频。
 
 【字幕】
 {content}
@@ -236,6 +410,7 @@ VIDEO_SUMMARY_TEMPLATE = """以下是某个视频的完整字幕文本（每行�
   "video_type": "视频类型，如：知识教程/访谈对话/会议记录/产品评测/vlog/新闻评论/娱乐综艺/其他",
   "one_liner": "一句话概括这个视频在讲什么，不超过 60 字",
   "key_points": [{{"t": 起始秒整数, "text": "核心要点1"}}, ... 3-6 条，每条 text 不超过 50 字],
+  "visual_points": [{{"t": 起始秒整数, "text": "画面上呈现的关键信息1"}}, ... 0-5 条],
   "review": "你对这条视频的评价与看法，120-250 字。要有明确观点：内容讲得好在哪、有什么不足或争议、值不值得花时间看、最适合谁看；不要复述剧情或罗列内容，也不要说空话。",
   "notes": [
     {{"title": "笔记小节标题（如：核心观点 / 方法步骤 / 关键数据 / 值得记的结论）",
@@ -258,6 +433,7 @@ VIDEO_SUMMARY_TEMPLATE = """以下是某个视频的完整字幕文本（每行�
 
 要求：
 - key_points 的每一项都必须带 "t" 字段：该要点在字幕中对应位置（或最近位置）的 [xx.xs] 秒数（整数），用于前端点击跳转视频；确实无法定位时给 null。
+- 若字幕之后附有【画面识别】段落：请把它与字幕结合理解（幻灯片提纲、图表数据、屏幕文字等），并把画面信息体现到 key_points / notes / review 中；visual_points 专门列出「屏幕上呈现的关键信息」（含屏幕文字、图表结论），每条带对应 t 秒数，最多 5 条；没有【画面识别】时 visual_points 给空数组 []。
 - notes 要整理成「能直接当复习笔记用」的知识条目：自己归纳、重组成体系，不要照抄字幕原句；可以补充必要的背景、因果和推论。每节 points 请写成完整的一句话，不要只写关键词。
 - review 是评价而非总结：要敢于指出不足（如注水、观点陈旧、广告过多、结论跳跃），也要说明亮点。若内容确实平庸，直接说平庸，不要刻意恭维。
 - review 写成一段连续的文字，不要手动换行（换行会破坏 JSON）。
@@ -327,7 +503,7 @@ def _normalize_points(data: dict) -> None:
     同时兼容旧版本已落盘的纯字符串列表（前端点击逻辑按 t 为空降级为不可跳转）。
     outline 是旧版字段，一并兜底规整，保证历史数据仍可渲染。
     """
-    for field, limit in (("key_points", 8), ("outline", 5)):
+    for field, limit in (("key_points", 8), ("visual_points", 6), ("outline", 5)):
         raw = data.get(field)
         if raw is None and field == "outline":
             continue  # outline 是旧版字段：模型没给就别凭空补一个空数组
@@ -350,12 +526,25 @@ def _normalize_points(data: dict) -> None:
         data[field] = [p for p in pts if p["text"] or p["t"] is not None]
 
 
+def build_summary_input(transcript: str, visual: list[dict] | None) -> str:
+    """把字幕与画面识别结果拼成摘要输入，让模型能同时利用「听到的」与「看到的」。"""
+    if not visual:
+        return transcript
+    lines = "\n".join(
+        f"[{float(v.get('t', 0)):.1f}s] {v.get('text', '')}"
+        for v in visual if str(v.get("text") or "").strip()
+    )
+    if not lines:
+        return transcript
+    return f"{transcript}\n\n【画面识别（按时间顺序，屏幕上呈现的内容）】\n{lines}"
+
+
 def generate_video_summary(transcript: str) -> dict:
     s = get_settings()
     # 取首+尾而非截头：开头结论与结尾总结都要保留，同时给模型的输出留出上下文空间
     content, _ = truncate_for_prompt(transcript, s.SUMMARY_INPUT_CHARS)
-    fallback = {"one_liner": "（摘要生成失败）", "key_points": [], "review": "", "notes": [],
-                "tags": [], "value_score": None}
+    fallback = {"one_liner": "（摘要生成失败）", "key_points": [], "visual_points": [],
+                "review": "", "notes": [], "tags": [], "value_score": None}
     try:
         data = chat_json(get_llm(), [
             {"role": "system",
@@ -374,8 +563,38 @@ def generate_video_summary(transcript: str) -> dict:
     return data
 
 
+def _run_vision(doc_id: str, video_path: Path, *,
+                status_pct: int = 72) -> tuple[list[dict], list[dict]]:
+    """抽帧 + 画面描述，并把画面描述并入向量库。
+
+    画面识别属于「锦上添花」：任何异常都只记日志并返回空，主流程继续走「仅字幕」摘要，
+    不会因为视觉模型缺失/报错而让整个视频处理失败。
+    """
+    if not get_settings().VISION_ENABLED:
+        return [], []
+    get_store().set_status(doc_id, DocStatus.SUMMARIZING, status_pct, "识别视频画面中")
+    try:
+        visual, frames = analyze_video(doc_id, video_path)
+    except Exception as e:
+        logger.warning("画面识别失败，降级为仅字幕摘要：%s", e)
+        return [], []
+    if visual:
+        # 画面描述同样进向量库，问答即可引用「屏幕上写了什么」
+        try:
+            get_vector_store().add_chunks(
+                doc_id,
+                [{"text": v["text"], "start": v["t"], "end": v["t"],
+                  "index": 100000 + i} for i, v in enumerate(visual)],
+                kind="visual",
+            )
+        except Exception as e:
+            logger.warning("画面描述向量化失败：%s", e)
+    return visual, frames
+
+
 def regenerate_video_summary(doc_id: str) -> None:
     """只重跑摘要与评分，复用已有转写结果（比全流程重试快得多）"""
+    s = get_settings()
     store = get_store()
     transcript = store.get_text(doc_id)
     if not transcript.strip():
@@ -387,9 +606,25 @@ def regenerate_video_summary(doc_id: str) -> None:
     if doc.pop("timeline", None) is not None:
         store.save_doc(doc)
 
+    # 复用已落盘的画面识别结果，重跑摘要时不必再跑一次视觉模型。
+    # 存量视频（本功能上线前处理的）没有画面数据，这里补跑一次——
+    # 「重新生成」因此也是把老视频升级为「字幕 + 画面」双通道摘要的入口。
+    visual = doc.get("visual_timeline") or []
+    if s.VISION_ENABLED and not visual and not doc.get("vision_done"):
+        vpath = doc.get("path")
+        if vpath and Path(vpath).exists():
+            visual, frames = _run_vision(doc_id, Path(vpath))
+            doc = store.get_doc(doc_id) or {}
+            doc["vision_done"] = True       # 记一笔：即使没抽到画面也不反复重跑
+            if visual:
+                doc["visual_timeline"] = visual
+            if frames:
+                doc["frames"] = frames
+            store.save_doc(doc)
+
     store.set_status(doc_id, DocStatus.SUMMARIZING, 85, "重新生成摘要中")
     try:
-        summary = generate_video_summary(transcript)
+        summary = generate_video_summary(build_summary_input(transcript, visual))
     except Exception as e:
         store.set_status(doc_id, DocStatus.FAILED, 100, f"{type(e).__name__}: {e}")
         doc = store.get_doc(doc_id) or {}
@@ -452,14 +687,23 @@ def process_video(doc_id: str, video_path: Path, hotwords: str = "") -> None:
         # 不再单独跑一遍全片分段概括，省掉长视频十几次模型调用。
         store.set_status(doc_id, DocStatus.EMBEDDING, 64, "向量化中")
         chunks = split_with_timestamps(segments, s.CHUNK_SIZE, s.CHUNK_OVERLAP)
-        get_vector_store().add_chunks(doc_id, chunks)
+        vs = get_vector_store()
+        vs.add_chunks(doc_id, chunks)
 
-        store.set_status(doc_id, DocStatus.SUMMARIZING, 85, "生成摘要中")
-        summary = generate_video_summary(transcript)
+        # 画面识别：抽帧 → 视觉模型描述。失败不影响主流程（降级为仅字幕摘要）。
+        visual_timeline, frames = _run_vision(doc_id, video_path)
+
+        store.set_status(doc_id, DocStatus.SUMMARIZING, 88, "生成摘要中")
+        summary = generate_video_summary(build_summary_input(transcript, visual_timeline))
 
         doc = store.get_doc(doc_id) or {}
         doc["summary"] = summary
         doc["chunks"] = len(chunks)
+        doc["vision_done"] = True      # 已尝试过画面识别，重跑摘要时不再重复抽帧
+        if visual_timeline:
+            doc["visual_timeline"] = visual_timeline
+        if frames:
+            doc["frames"] = frames
         # 旧版记录里的 timeline 字段不再生成；重跑一次即会自然清空
         doc.pop("timeline", None)
         store.save_doc(doc)

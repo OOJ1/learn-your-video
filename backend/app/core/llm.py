@@ -1,6 +1,7 @@
 """统一 LLM 抽象层：Ollama 与 OpenAI 兼容云端共用同一套 OpenAI SDK，仅切换 base_url。"""
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import re
@@ -30,6 +31,11 @@ class BaseLLM:
                max_tokens: int | None = None) -> Iterator[str]:
         raise NotImplementedError
 
+    def describe_images(self, prompt: str, images: list[bytes],
+                        max_tokens: int | None = None) -> str:
+        """把若干张图片交给视觉模型，按 prompt 要求返回文本（画面描述）。"""
+        raise NotImplementedError
+
     def list_models(self) -> list[str]:
         return []
 
@@ -40,19 +46,22 @@ class BaseLLM:
 class OpenAICompatLLM(BaseLLM):
     """DeepSeek / 通义 / 智谱 / OpenAI 等所有 OpenAI 兼容端点"""
 
-    def __init__(self, settings: Settings, trust_env: bool = True):
+    def __init__(self, settings: Settings, trust_env: bool = True, *,
+                 model: str | None = None, base_url: str | None = None,
+                 api_key: str | None = None):
         self.s = settings
         self.provider = "openai"
-        self.model = settings.OPENAI_MODEL
-        key = (settings.OPENAI_API_KEY or "").strip()
+        self.model = model or settings.OPENAI_MODEL
+        self._base_url = base_url or settings.OPENAI_BASE_URL
+        key = (api_key or settings.OPENAI_API_KEY or "").strip()
         if not key or key.startswith("sk-REPLACE") or not key.isascii():
             raise LLMError(
                 "OPENAI_API_KEY 未正确配置（当前为空、占位符或含非 ASCII 字符）。"
                 "请在 backend/.env 中填入真实的 DeepSeek Key，例如 OPENAI_API_KEY=sk-xxxx"
             )
         self.client = OpenAI(
-            api_key=settings.OPENAI_API_KEY,
-            base_url=settings.OPENAI_BASE_URL,
+            api_key=key,
+            base_url=self._base_url,
             timeout=httpx.Timeout(180.0, connect=15.0),
             max_retries=2,
             http_client=httpx.Client(trust_env=trust_env),
@@ -79,12 +88,29 @@ class OpenAICompatLLM(BaseLLM):
             if chunk.choices and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
 
+    def describe_images(self, prompt: str, images: list[bytes],
+                        max_tokens: int | None = None) -> str:
+        if not images:
+            return ""
+        content: list[dict] = [{"type": "text", "text": prompt}]
+        for b in images:
+            b64 = base64.b64encode(b).decode("ascii")
+            content.append({"type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
+        resp = self.client.chat.completions.create(
+            model=self.model,
+            messages=[{"role": "user", "content": content}],
+            temperature=0.2,
+            max_tokens=max_tokens or self.s.VISION_MAX_TOKENS,
+        )
+        return (resp.choices[0].message.content or "").strip()
+
     def list_models(self) -> list[str]:
         try:
             return sorted(m.id for m in self.client.models.list().data)
         except Exception as e:
             raise LLMError(
-                f"无法拉取 {self.s.OPENAI_BASE_URL} 的模型列表：{type(e).__name__}: {e}"
+                f"无法拉取 {self._base_url} 的模型列表：{type(e).__name__}: {e}"
                 "（检查 OPENAI_API_KEY 是否正确、网络是否可达）"
             ) from e
 
@@ -92,7 +118,7 @@ class OpenAICompatLLM(BaseLLM):
         try:
             models = self.list_models()
             return {"provider": self.provider, "model": self.model,
-                    "base_url": self.s.OPENAI_BASE_URL, "ok": True, "models": models[:20]}
+                    "base_url": self._base_url, "ok": True, "models": models[:20]}
         except Exception as e:
             return {"provider": self.provider, "model": self.model,
                     "ok": False, "error": f"{type(e).__name__}: {e}"}
@@ -106,11 +132,12 @@ class OllamaLLM(BaseLLM):
     可直接输出答案（实测 0.9s vs 46.7s 且仍为空）。
     """
 
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, *, model: str | None = None,
+                 base_url: str | None = None):
         self.s = settings
         self.provider = "ollama"
-        self.model = settings.OLLAMA_MODEL
-        self._base = settings.OLLAMA_BASE_URL.replace("/v1", "").rstrip("/")
+        self.model = model or settings.OLLAMA_MODEL
+        self._base = (base_url or settings.OLLAMA_BASE_URL).replace("/v1", "").rstrip("/")
         # 本地地址必须绕过系统代理，否则 127.0.0.1 会被代理拦截
         self._c = httpx.Client(timeout=httpx.Timeout(600.0, connect=10.0), trust_env=False)
 
@@ -166,6 +193,35 @@ class OllamaLLM(BaseLLM):
             )
         return self._extract(data.get("message", {}))
 
+    def describe_images(self, prompt, images, max_tokens=None) -> str:
+        """Ollama 原生 /api/chat 支持 messages[].images（base64 数组），无需走 /v1。"""
+        if not images:
+            return ""
+        payload = {
+            "model": self.model,
+            "messages": [{
+                "role": "user",
+                "content": prompt,
+                "images": [base64.b64encode(b).decode("ascii") for b in images],
+            }],
+            "stream": False,
+            "think": bool(self.s.OLLAMA_THINK),
+            "options": {
+                "temperature": 0.2,
+                "num_predict": max_tokens or self.s.VISION_MAX_TOKENS,
+                "num_ctx": self.s.OLLAMA_NUM_CTX,
+            },
+        }
+        data = self._post(payload).json()
+        content = (data.get("message", {}).get("content") or "").strip()
+        if not content:
+            raise LLMError(
+                f"视觉模型 {self.model} 未返回内容——该模型可能不支持图像输入。"
+                "请改用支持视觉的模型（如 qwen3.5 / qwen2.5vl / llava / minicpm-v），"
+                "或在 .env 中设置 VISION_ENABLED=false 关闭画面识别。"
+            )
+        return content
+
     def stream(self, messages, temperature=None, max_tokens=None) -> Iterator[str]:
         payload = self._payload(messages, temperature, max_tokens, stream=True)
         try:
@@ -218,6 +274,44 @@ def get_llm(force: bool = False) -> BaseLLM:
     else:
         raise LLMError(f"未知 LLM_PROVIDER: {p}（可选 openai / ollama）")
     return _llm
+
+
+_vision_llm: BaseLLM | None = None
+
+
+def get_vision_llm(force: bool = False) -> BaseLLM | None:
+    """视觉模型客户端；未启用或初始化失败时返回 None（调用方需降级为仅字幕摘要）。
+
+    provider / model 默认「跟随主模型」（VISION_PROVIDER / VISION_MODEL 留空即生效），
+    所以只要主模型支持视觉就能开箱可用；也支持显式指定，让文字与画面走不同模型。
+    """
+    global _vision_llm
+    s = get_settings()
+    if not s.VISION_ENABLED:
+        return None
+    if _vision_llm is not None and not force:
+        return _vision_llm
+    p = (s.VISION_PROVIDER or s.LLM_PROVIDER or "").lower().strip()
+    try:
+        if p == "openai":
+            _vision_llm = OpenAICompatLLM(
+                s,
+                model=s.VISION_MODEL or s.OPENAI_MODEL,
+                base_url=s.VISION_BASE_URL or s.OPENAI_BASE_URL,
+                api_key=s.VISION_API_KEY or s.OPENAI_API_KEY,
+            )
+        else:
+            _vision_llm = OllamaLLM(
+                s,
+                model=s.VISION_MODEL or s.OLLAMA_MODEL,
+                base_url=s.VISION_BASE_URL or s.OLLAMA_BASE_URL,
+            )
+    except Exception as e:
+        # 视觉是附加能力：任何初始化异常都只降级，不向上抛，避免拖垮转写/摘要主流程
+        logger.warning("视觉模型初始化失败，本次降级为仅字幕摘要：%s: %s",
+                       type(e).__name__, e)
+        return None
+    return _vision_llm
 
 
 _JSON_FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.S)

@@ -34,7 +34,8 @@ SYSTEM_PROMPT = (
     "2. 每个关键结论后必须紧跟来源编号，严格使用方括号格式，如 [1] 或 [2][3]；"
     "不要写成「资料 1」「來源編號 1」等其他形式。\n"
     "3. 资料确实没有涉及的内容，明确说明「资料中未提及」。\n"
-    "4. 使用简体中文，适当用列表让答案结构化。"
+    "4. 参考资料可能来自视频的「字幕」或「画面」，「画面」指屏幕/画面上呈现的文字与图表。\n"
+    "5. 使用简体中文，适当用列表让答案结构化。"
 )
 
 ANSWER_TEMPLATE = """【参考资料】
@@ -101,11 +102,16 @@ def build_local_context(doc_id: str, question: str) -> tuple[str, list[Ref], dic
         for i, h in enumerate(hits, 1):
             m = h.get("metadata", {}) or {}
             st, en = float(m.get("start", 0.0)), float(m.get("end", 0.0))
+            # kind=visual 是画面识别结果：来源标为「画面」，只有单点时间戳
+            is_visual = str(m.get("kind") or "") == "visual"
+            tag = "画面" if is_visual else "字幕"
+            span = fmt_time(st) if is_visual else f"{fmt_time(st)}-{fmt_time(en)}"
             blocks.append(
-                f"【资料 {i}｜来源：{doc.get('filename')} {fmt_time(st)}-{fmt_time(en)}"
+                f"【资料 {i}｜来源：{doc.get('filename')} {span}（{tag}）"
                 f"｜相似度 {h['score']}】\n{h['text']}"
             )
-            refs.append(Ref(i, "video", f"{doc.get('filename')} {fmt_time(st)}",
+            refs.append(Ref(i, "visual" if is_visual else "video",
+                            f"{doc.get('filename')} {fmt_time(st)}",
                             doc_id=doc_id, start=st, end=en, snippet=h["text"][:120]))
     return "\n\n".join(blocks), refs, flags
 

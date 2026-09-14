@@ -46,8 +46,10 @@ export function DocList({
             key={d.id}
             onClick={() => onSelect(d)}
             className={cn(
-              "group cursor-pointer rounded-lg border border-white/50 bg-white/30 p-2 backdrop-blur transition-colors",
-              selectedId === d.id ? "border-primary bg-white/60" : "hover:bg-white/50"
+              "group cursor-pointer rounded-lg border border-white/60 bg-white/40 p-2 backdrop-blur transition-all duration-200",
+              selectedId === d.id
+                ? "border-indigo-400/60 bg-white/75 shadow-[0_2px_10px_rgba(15,23,42,0.1),inset_0_1px_0_rgba(255,255,255,0.9)]"
+                : "shadow-[0_1px_2px_rgba(15,23,42,0.04),inset_0_1px_0_rgba(255,255,255,0.55)] hover:bg-white/60"
             )}
           >
             <div className="flex items-start gap-2">

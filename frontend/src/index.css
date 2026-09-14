@@ -75,15 +75,34 @@
     line-height: 1.6;
     text-rendering: optimizeLegibility;
     min-height: 100vh;
-    /* 玻璃拟态的底层：柔和多色 mesh 渐变，半透明面板才能透出色彩 */
-    background-color: #eef2ff;
+    /* 玻璃拟态的底层：低饱和冷调渐变 + 细腻噪点，克制才显贵 */
+    background-color: #f4f6fb;
     background-image:
-      radial-gradient(60% 60% at 12% 18%, rgba(167, 139, 250, 0.45), transparent 60%),
-      radial-gradient(55% 55% at 88% 12%, rgba(56, 189, 248, 0.40), transparent 60%),
-      radial-gradient(60% 60% at 78% 88%, rgba(244, 114, 182, 0.40), transparent 60%),
-      radial-gradient(55% 55% at 18% 85%, rgba(110, 231, 183, 0.38), transparent 60%),
-      linear-gradient(135deg, #eef2ff, #f5f3ff 45%, #ecfeff);
+      radial-gradient(52% 52% at 14% 12%, rgba(139, 148, 199, 0.28), transparent 62%),
+      radial-gradient(48% 48% at 88% 8%, rgba(125, 170, 218, 0.26), transparent 62%),
+      radial-gradient(50% 50% at 84% 90%, rgba(196, 154, 197, 0.22), transparent 62%),
+      radial-gradient(46% 46% at 10% 88%, rgba(134, 190, 178, 0.20), transparent 62%),
+      linear-gradient(160deg, #f6f7fb, #f3f4f9 50%, #eef1f7);
     background-attachment: fixed;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    /* SVG 噪点：消除渐变色带，带来纸质感 */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.028'/%3E%3C/svg%3E");
+  }
+
+  /* 标题字距收紧，正文保持呼吸感 —— 排版是高级感的第一来源 */
+  h1, h2, h3, h4 {
+    letter-spacing: -0.015em;
+  }
+
+  ::selection {
+    background: rgba(99, 102, 241, 0.18);
   }
 
   /* 数字与代码保持等宽观感，避免跳动 */
@@ -157,13 +176,24 @@
 }
 
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  @apply rounded bg-white/50;
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(100, 116, 139, 0.28);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.45);
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* 全局微交互：统一缓动曲线 */
+button, a, input, textarea {
+  transition-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1);
 }

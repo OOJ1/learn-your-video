@@ -4,16 +4,17 @@ import { cn } from "../lib/utils";
 
 /* ---------------- Button ---------------- */
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60 focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98]",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm",
+        default:
+          "bg-gradient-to-b from-slate-800 to-slate-900 text-primary-foreground shadow-[0_1px_2px_rgba(15,23,42,0.24),0_4px_12px_rgba(15,23,42,0.16)] hover:shadow-[0_1px_2px_rgba(15,23,42,0.28),0_6px_16px_rgba(15,23,42,0.22)] hover:brightness-110",
         outline:
-          "border border-white/60 bg-white/40 text-foreground backdrop-blur hover:bg-white/60",
+          "border border-white/70 bg-white/50 text-foreground shadow-sm backdrop-blur hover:bg-white/70 hover:border-white",
         secondary:
-          "border border-white/50 bg-white/40 text-foreground backdrop-blur hover:bg-white/60",
-        ghost: "hover:bg-white/50",
+          "border border-white/60 bg-white/45 text-foreground shadow-sm backdrop-blur hover:bg-white/65",
+        ghost: "hover:bg-white/55",
         destructive: "bg-destructive text-white hover:bg-destructive/90 shadow-sm",
       },
       size: {
@@ -41,7 +42,7 @@ Button.displayName = "Button";
 export const Card = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "rounded-2xl border border-white/50 bg-white/50 text-card-foreground shadow-lg backdrop-blur-xl",
+      "rounded-2xl border border-white/60 bg-white/55 text-card-foreground backdrop-blur-xl shadow-[0_1px_1px_rgba(15,23,42,0.04),0_4px_10px_rgba(15,23,42,0.06),0_16px_36px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.7)]",
       className
     )}
     {...props}
@@ -63,7 +64,7 @@ export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttribute
     <input
       ref={ref}
       className={cn(
-        "flex h-9 w-full rounded-md border border-white/60 bg-white/50 px-3 py-1 text-sm shadow-sm backdrop-blur placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+        "flex h-9 w-full rounded-md border border-white/70 bg-white/55 px-3 py-1 text-sm shadow-sm backdrop-blur placeholder:text-muted-foreground/70 transition-all focus-visible:outline-none focus-visible:border-indigo-400/60 focus-visible:ring-2 focus-visible:ring-indigo-500/25 focus-visible:bg-white/75 disabled:opacity-50",
         className
       )}
       {...props}
@@ -79,7 +80,7 @@ export const Textarea = React.forwardRef<
   <textarea
     ref={ref}
       className={cn(
-        "flex min-h-[60px] w-full rounded-md border border-white/60 bg-white/50 px-3 py-2 text-sm shadow-sm backdrop-blur placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+        "flex min-h-[60px] w-full rounded-md border border-white/70 bg-white/55 px-3 py-2 text-sm shadow-sm backdrop-blur placeholder:text-muted-foreground/70 transition-all focus-visible:outline-none focus-visible:border-indigo-400/60 focus-visible:ring-2 focus-visible:ring-indigo-500/25 focus-visible:bg-white/75 disabled:opacity-50",
         className
       )}
     {...props}
@@ -144,8 +145,8 @@ export function Tabs({
           className={cn(
             "rounded-md px-3 py-1 text-xs font-medium transition-colors",
             value === t.value
-              ? "bg-white/80 shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
+              ? "bg-white/85 shadow-[0_1px_3px_rgba(15,23,42,0.12),inset_0_1px_0_rgba(255,255,255,0.9)]"
+              : "text-muted-foreground hover:text-foreground hover:bg-white/40"
           )}
         >
           {t.label}

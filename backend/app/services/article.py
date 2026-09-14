@@ -153,6 +153,12 @@ def to_markdown(doc: dict) -> str:
         lines += [f"- {_point_text(x)}" for x in kp]
         lines.append("")
 
+    vp = s.get("visual_points") or []
+    if vp:
+        lines += ["## 画面要点", "", "> 视频画面中呈现的信息（含屏幕文字/图表）", ""]
+        lines += [f"- {_point_text(x)}" for x in vp]
+        lines.append("")
+
     review = s.get("review")
     if review:
         lines += ["## 模型评价", "", str(review), ""]

@@ -138,14 +138,14 @@ export function GrabberPanel({ onImported }: { onImported?: (d: Doc) => void }) 
     <div className="min-h-0 flex-1 overflow-y-auto p-6">
       <div className="mx-auto max-w-2xl space-y-4">
         {/* 傻瓜式操作说明 */}
-        <div className="rounded-2xl border border-white/50 bg-white/40 p-4 backdrop-blur">
+        <div className="rounded-2xl border border-white/60 bg-white/45 p-4 backdrop-blur shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_rgba(15,23,42,0.06),inset_0_1px_0_rgba(255,255,255,0.65)]">
           <p className="flex items-center gap-1.5 text-sm font-semibold">
             <Sparkles className="h-4 w-4" />
             三步把网上视频存到本地
           </p>
           <ol className="mt-2 space-y-1.5 text-xs leading-relaxed text-muted-foreground">
             <li className="flex gap-2">
-              <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
+              <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-slate-800 to-slate-900 text-[10px] text-primary-foreground">
                 1
               </span>
               <span>
@@ -154,13 +154,13 @@ export function GrabberPanel({ onImported }: { onImported?: (d: Doc) => void }) 
               </span>
             </li>
             <li className="flex gap-2">
-              <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
+              <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-slate-800 to-slate-900 text-[10px] text-primary-foreground">
                 2
               </span>
               <span>把链接粘到下面的输入框，选清晰度，点「开始下载」。</span>
             </li>
             <li className="flex gap-2">
-              <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
+              <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-slate-800 to-slate-900 text-[10px] text-primary-foreground">
                 3
               </span>
               <span>
@@ -172,7 +172,7 @@ export function GrabberPanel({ onImported }: { onImported?: (d: Doc) => void }) 
         </div>
 
         {/* 输入区 */}
-        <div className="space-y-2 rounded-2xl border border-white/50 bg-white/40 p-4 backdrop-blur">
+        <div className="space-y-2 rounded-2xl border border-white/60 bg-white/45 p-4 backdrop-blur shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_rgba(15,23,42,0.06),inset_0_1px_0_rgba(255,255,255,0.65)]">
           <div className="flex items-center gap-2">
             <Link2 className="h-4 w-4 text-muted-foreground" />
             <Input
@@ -214,7 +214,7 @@ export function GrabberPanel({ onImported }: { onImported?: (d: Doc) => void }) 
 
         {/* 当前进度 */}
         {job && (
-          <div className="space-y-3 rounded-2xl border border-white/50 bg-white/40 p-4 backdrop-blur">
+          <div className="space-y-3 rounded-2xl border border-white/60 bg-white/45 p-4 backdrop-blur shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_rgba(15,23,42,0.06),inset_0_1px_0_rgba(255,255,255,0.65)]">
             <div className="flex items-center gap-2 text-xs">
               {job.status === "done" ? (
                 <CheckCircle2 className="h-4 w-4 text-emerald-600" />
@@ -264,7 +264,7 @@ export function GrabberPanel({ onImported }: { onImported?: (d: Doc) => void }) 
 
         {/* 历史下载：下载的文件会一直留在本地，这里可以随时取用或清理 */}
         {others.length > 0 && (
-          <div className="rounded-2xl border border-white/50 bg-white/30 backdrop-blur">
+          <div className="rounded-2xl border border-white/60 bg-white/40 backdrop-blur shadow-[0_1px_2px_rgba(15,23,42,0.04),inset_0_1px_0_rgba(255,255,255,0.6)]">
             <div className="flex items-center gap-1.5 border-b border-white/40 px-4 py-2.5">
               <History className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="text-xs font-semibold">历史下载</span>

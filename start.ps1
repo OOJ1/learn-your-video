@@ -1,4 +1,6 @@
 ﻿# Windows 启动脚本 - 后端 + 前端（开发模式）
+# 说明：两个服务都以「隐藏窗口」方式后台启动，不会再弹出 cmd 黑窗。
+#       日志仍在 logs/ 下，停止服务用 .\stop.ps1。
 
 Write-Host "=== study-buddy startup ===" -ForegroundColor Cyan
 
@@ -16,31 +18,57 @@ foreach ($port in 8000, 5173) {
     } catch { }  # 端口无监听时忽略
 }
 
+$root = "E:\study-buddy"
+$logDir = Join-Path $root "logs"
+if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir | Out-Null }
+
 # 1. 后端
-$py = "E:\study-buddy\.venv\Scripts\python.exe"
+$py = Join-Path $root ".venv\Scripts\python.exe"
 if (-not (Test-Path $py)) { Write-Error "venv not found: $py"; exit 1 }
 
 Write-Host "[backend] launching uvicorn on :8000 ..." -ForegroundColor Yellow
 Start-Process -FilePath $py `
     -ArgumentList "-m","uvicorn","app.main:app","--host","127.0.0.1","--port","8000" `
-    -WorkingDirectory "E:\study-buddy\backend" `
-    -RedirectStandardOutput "E:\study-buddy\logs\backend.log" `
-    -RedirectStandardError  "E:\study-buddy\logs\backend.err"
+    -WorkingDirectory (Join-Path $root "backend") `
+    -WindowStyle Hidden `
+    -RedirectStandardOutput (Join-Path $logDir "backend.log") `
+    -RedirectStandardError  (Join-Path $logDir "backend.err")
 
 # 2. 前端
-Write-Host "[frontend] launching vite on :5173 ..." -ForegroundColor Yellow
-Start-Process -FilePath "npx.cmd" `
-    -ArgumentList "vite","--host","127.0.0.1" `
-    -WorkingDirectory "E:\study-buddy\frontend" `
-    -RedirectStandardOutput "E:\study-buddy\logs\frontend.log" `
-    -RedirectStandardError  "E:\study-buddy\logs\frontend.err"
+#    直接调 node 跑 vite，不再走 npx.cmd：npx.cmd 是批处理，必须由 cmd.exe 再包一层，
+#    既拖慢启动，也多一个窗口来源。
+$frontend = Join-Path $root "frontend"
+$viteJs = Join-Path $frontend "node_modules\vite\bin\vite.js"
+
+$nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+$node = $null
+if ($nodeCmd) { $node = $nodeCmd.Source }
+
+if ($node -and (Test-Path $viteJs)) {
+    Write-Host "[frontend] launching vite on :5173 ..." -ForegroundColor Yellow
+    Start-Process -FilePath $node `
+        -ArgumentList $viteJs,"--host","127.0.0.1" `
+        -WorkingDirectory $frontend `
+        -WindowStyle Hidden `
+        -RedirectStandardOutput (Join-Path $logDir "frontend.log") `
+        -RedirectStandardError  (Join-Path $logDir "frontend.err")
+} else {
+    # 兜底：机器上找不到 node 或本地没装 vite 时，退回 npx（同样隐藏窗口）
+    Write-Host "[frontend] node/vite not found, fallback to npx.cmd ..." -ForegroundColor DarkYellow
+    Start-Process -FilePath "npx.cmd" `
+        -ArgumentList "vite","--host","127.0.0.1" `
+        -WorkingDirectory $frontend `
+        -WindowStyle Hidden `
+        -RedirectStandardOutput (Join-Path $logDir "frontend.log") `
+        -RedirectStandardError  (Join-Path $logDir "frontend.err")
+}
 
 Write-Host ""
 Write-Host "Backend  : http://127.0.0.1:8000  (API docs: /docs)" -ForegroundColor Green
 Write-Host "Frontend : http://127.0.0.1:5173" -ForegroundColor Green
-Write-Host "Logs     : E:\study-buddy\logs\" -ForegroundColor Gray
+Write-Host "Logs     : $logDir\" -ForegroundColor Gray
+Write-Host "Stop     : .\stop.ps1" -ForegroundColor Gray
 Write-Host ""
-Write-Host "Press Ctrl+C in this window to stop (or close the spawned shells)." -ForegroundColor Gray
 
 # 等待后端就绪
 Start-Sleep -Seconds 5
@@ -49,5 +77,6 @@ try {
     Write-Host "Health check: $($r.StatusCode) $($r.Content)" -ForegroundColor Green
 } catch {
     Write-Host "Health check failed. Tail of backend.err:" -ForegroundColor Red
-    if (Test-Path "E:\study-buddy\logs\backend.err") { Get-Content "E:\study-buddy\logs\backend.err" -Tail 20 }
+    $errFile = Join-Path $logDir "backend.err"
+    if (Test-Path $errFile) { Get-Content $errFile -Tail 20 }
 }
