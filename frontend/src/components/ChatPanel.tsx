@@ -33,6 +33,8 @@ export function ChatPanel({
   const [busy, setBusy] = useState(false);
   const [useWeb, setUseWeb] = useState<"auto" | "on" | "off">("auto");
   const [searchOff, setSearchOff] = useState(false);
+  /** 历史问答载入中：避免切换视频时短暂显示上一个视频的问答记录 */
+  const [histLoading, setHistLoading] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // 后端关闭联网搜索时，前端同步置灰「强制联网」，避免点了没反应
@@ -44,18 +46,30 @@ export function ChatPanel({
   }, []);
 
   useEffect(() => {
+    let alive = true;
+    setHistLoading(true);
+    setMsgs([]); // 先清空，防止旧文档的问答残留在新文档下
     api
       .history(doc.id)
-      .then((r) =>
+      .then((r) => {
+        if (!alive) return;
         setMsgs(
           (r.items || []).map((m: any) => ({
             role: m.role,
             content: m.content,
             refs: m.refs,
           }))
-        )
-      )
-      .catch(() => setMsgs([]));
+        );
+      })
+      .catch(() => {
+        if (alive) setMsgs([]);
+      })
+      .finally(() => {
+        if (alive) setHistLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
   }, [doc.id]);
 
   useEffect(() => {
@@ -126,7 +140,14 @@ export function ChatPanel({
       </div>
 
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
-        {!msgs.length && (
+        {histLoading && (
+          <p className="flex items-center justify-center gap-1.5 py-8 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            载入问答历史…
+          </p>
+        )}
+
+        {!histLoading && !msgs.length && (
           <p className="py-8 text-center text-xs text-muted-foreground">
             基于「{doc.filename}」提问，回答会标注引用来源
           </p>

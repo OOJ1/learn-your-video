@@ -140,6 +140,9 @@ export const api = {
   base: BASE,
   diagnose: () => req<Record<string, any>>("/api/diagnose"),
 
+  // ---------- 停止整个服务（后端 + 前端） ----------
+  stop: () => req<{ ok: boolean; message?: string }>("/api/stop", { method: "POST" }),
+
   list: (t: DocType) => req<{ items: Doc[] }>(`/api/${plural(t)}`),
   get: (t: DocType, id: string) => req<{ doc: Doc }>(`/api/${plural(t)}/${id}`),
   status: (t: DocType, id: string) =>

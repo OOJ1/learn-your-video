@@ -1,5 +1,9 @@
 import logging
+import os
+import subprocess
 import sys
+import threading
+import time
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -52,6 +56,48 @@ def health():
         "embed_provider": settings.EMBED_PROVIDER,
         "search_provider": settings.SEARCH_PROVIDER,
     }
+
+
+# study-buddy 项目根目录（backend/app/main.py -> 上溯三级到 E:\study-buddy）
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_STOP_SCRIPT = os.path.join(_PROJECT_ROOT, "stop.ps1")
+
+
+@app.post("/api/stop")
+async def stop_services():
+    """停止整个「学习搭子」（后端 8000 + 前端 5173）。
+
+    关键点：用独立（detached）子进程去执行 stop.ps1，先把 200 响应发回浏览器，
+    再让子进程杀掉后端自身与前端的进程——否则自杀会卡在响应还没发出去。
+    """
+    def _trigger():
+        try:
+            # 等本请求的响应先通过网络送出去
+            time.sleep(1.0)
+            flags = 0
+            for _f in ("DETACHED_PROCESS", "CREATE_NEW_PROCESS_GROUP"):
+                if hasattr(subprocess, _f):
+                    flags |= getattr(subprocess, _f)
+            # 优先用 stop.ps1（与桌面「停止」完全一致）；失败再退回 stop.cmd
+            for _args in (
+                ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", _STOP_SCRIPT],
+                ["cmd.exe", "/c", os.path.join(_PROJECT_ROOT, "stop.cmd")],
+            ):
+                try:
+                    subprocess.Popen(
+                        _args,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        creationflags=flags,
+                    )
+                    return
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    threading.Thread(target=_trigger, daemon=True).start()
+    return {"ok": True, "message": "正在停止服务，稍后页面将不可用，可关闭此窗口。"}
 
 
 @app.get("/api/diagnose")

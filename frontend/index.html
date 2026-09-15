@@ -2,12 +2,56 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>你的学习搭子</title>
   </head>
   <body>
     <div id="root"></div>
+
+    <!-- 兜底：开发模式下偶发「首屏空白 / 入口模块没加载上」，自动重载一次即可恢复，
+         不必让用户手动按 F5。15 秒内最多重试一次，避免死循环。 -->
+    <script>
+      (function () {
+        var KEY = "sb_boot_retry_at";
+
+        function retryOnce(reason) {
+          try {
+            var last = Number(sessionStorage.getItem(KEY) || 0);
+            if (Date.now() - last < 15000) return false;
+            sessionStorage.setItem(KEY, String(Date.now()));
+            if (window.console) console.warn("[boot] 首屏异常（" + reason + "），自动重载一次");
+            location.reload();
+            return true;
+          } catch (e) {
+            return false; // 隐私模式下 sessionStorage 不可用
+          }
+        }
+
+        // 1) 入口脚本 / 样式加载失败：多半是 dev server 的依赖尚未就绪
+        window.addEventListener(
+          "error",
+          function (e) {
+            var t = e.target;
+            if (t && (t.tagName === "SCRIPT" || t.tagName === "LINK")) {
+              retryOnce("资源加载失败 " + (t.src || t.href || ""));
+            }
+          },
+          true
+        );
+
+        // 2) 3.5 秒后根节点仍为空：兜底再来一次
+        setTimeout(function () {
+          var root = document.getElementById("root");
+          if (!root || root.childElementCount > 0) return;
+          retryOnce("根节点为空");
+        }, 3500);
+      })();
+    </script>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

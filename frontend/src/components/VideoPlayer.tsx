@@ -119,7 +119,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, { src: string; markers?
       };
     }, []);
 
-    // 切换视频时重置显示
+    // 切换视频时重置显示，并显式让 <video> 重新加载资源。
+    // 只改 src 属性在个别浏览器上会出现"画面仍是上一个视频 / 黑屏"的情况，
+    // 手动 load() 可以确保新视频立刻生效，不必刷新页面。
     useEffect(() => {
       setCur(0);
       setDur(0);
@@ -127,6 +129,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, { src: string; markers?
       setPlaying(false);
       setHoverPct(null);
       setHoverIdx(null);
+      try {
+        videoRef.current?.load();
+      } catch {
+        /* 某些浏览器在无 src 时 load() 会抛错，忽略 */
+      }
     }, [src]);
 
     // 记录播放器宽度与进度条纵向位置：悬停卡片要按像素夹在可视区内，
