@@ -111,7 +111,13 @@ class Settings(BaseSettings):
 
     # ---------- RAG ----------
     MAX_ARTICLE_CHARS: int = 24000
+    # 正文超过这个字数才切块向量化；不超过则整篇直投给模型（省一次嵌入，且模型能看到全文）。
+    # 默认与 SUMMARY_INPUT_CHARS 对齐：正文一旦超过送模型的字符上限，直投必然被截断、
+    # 中间段落直接丢失，此时「切块 + Top-K 检索」反而比直投更完整。
+    ARTICLE_VECTORIZE_MIN_CHARS: int = 8000
     VIDEO_TOP_K: int = 4
+    # 文章块（500 字）比字幕块信息密度高，回答「全文讲了什么」类问题需要多取几块
+    ARTICLE_TOP_K: int = 6
     SCORE_THRESHOLD: float = 0.30
     CHUNK_SIZE: int = 500
     CHUNK_OVERLAP: int = 80

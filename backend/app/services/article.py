@@ -1,13 +1,25 @@
-"""文章处理流水线：解析 → 原文直存（不向量化）→ LLM 生成摘要。"""
+"""文章处理流水线：解析 → 原文直存 →（长文）切块向量化 → LLM 生成摘要。
+
+向量化是「按需触发」的：正文不超过 ARTICLE_VECTORIZE_MIN_CHARS 时整篇直投给模型，
+又准又省一次嵌入；超过阈值才切块入库，问答走 Top-K 检索。
+原因是直投有硬上限（模型上下文），超长文章会被截断丢掉中间段落，
+而检索能把最相关的片段精准捞出来。
+"""
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from app.config import get_settings
 from app.core.llm import LLMError, chat_json, get_llm
 from app.core.schema import normalize_notes, normalize_text
+from app.core.textsplit import split_plain_text
+from app.core.embeddings import EmbeddingError
 from app.services.parsers import extract_article_text
 from app.services.store import DocStatus, get_store
+from app.services.vector import VectorStoreError, get_vector_store
+
+logger = logging.getLogger("app.article")
 
 SUMMARY_SYSTEM = (
     "你是「你的学习搭子」，一个擅长提炼知识的学习助手。"
@@ -85,8 +97,50 @@ def generate_summary(text: str, title: str) -> dict:
     return data
 
 
+def _purge_vectors(doc_id: str) -> None:
+    """清掉该文档的旧向量。失败只记日志——清理属于维护动作，不该拖垮主流程。"""
+    try:
+        get_vector_store().delete_doc(doc_id)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("清理文章旧向量失败 doc=%s：%s", doc_id, e)
+
+
+def vectorize_article(doc_id: str, text: str, was_vectorized: bool = False) -> int:
+    """按需把长文切块写入向量库，返回写入块数（不满足条件或失败时返回 0）。
+
+    失败一律降级为「整篇直投」而不是让整篇文档 FAILED：摘要照样能出，
+    只是问答退化成截断直投。嵌入模型没下载好是最常见的失败原因。
+    """
+    s = get_settings()
+    if len(text) < s.ARTICLE_VECTORIZE_MIN_CHARS:
+        # 阈值被调高后重跑：本轮改走直投，上一轮的索引必须清掉，
+        # 否则库里会留着一份文档里已不再引用的陈旧向量。
+        if was_vectorized:
+            _purge_vectors(doc_id)
+        return 0
+    try:
+        chunks = split_plain_text(text, s.CHUNK_SIZE, s.CHUNK_OVERLAP)
+        if not chunks:
+            return 0
+        # 先清后写：重跑时若新分块比上一轮少，残留的旧块会变成检索得到的「幽灵段落」
+        _purge_vectors(doc_id)
+        n = get_vector_store().add_chunks(
+            doc_id,
+            [{"text": t, "index": i} for i, t in enumerate(chunks)],
+            kind="article",
+        )
+        logger.info("文章已向量化 doc=%s chars=%d chunks=%d", doc_id, len(text), n)
+        return n
+    except (VectorStoreError, EmbeddingError) as e:
+        logger.warning("文章向量化失败 doc=%s，降级为整篇直投：%s", doc_id, e)
+        return 0
+    except Exception as e:  # noqa: BLE001 — 向量化是增强项，绝不能拖垮摘要
+        logger.warning("文章向量化异常 doc=%s，降级为整篇直投：%s", doc_id, e)
+        return 0
+
+
 def process_article(doc_id: str, file_path: Path) -> None:
-    """后台任务：解析原文 → 生成摘要。任何异常都落为 FAILED 而非崩溃。"""
+    """后台任务：解析原文 → 长文向量化 → 生成摘要。任何异常都落为 FAILED 而非崩溃。"""
     store = get_store()
     try:
         store.set_status(doc_id, DocStatus.PARSING, 15)
@@ -96,6 +150,18 @@ def process_article(doc_id: str, file_path: Path) -> None:
         doc = store.get_doc(doc_id) or {}
         doc.update(meta)
         doc["chars"] = len(text)
+        # 重跑时读到的 vectorized 是上一轮的结果：本轮若不再需要向量化，要靠它把旧索引清干净
+        was_vectorized = bool(doc.get("vectorized"))
+        store.save_doc(doc)
+
+        s = get_settings()
+        if len(text) >= s.ARTICLE_VECTORIZE_MIN_CHARS:
+            store.set_status(doc_id, DocStatus.EMBEDDING, 40)
+        chunks = vectorize_article(doc_id, text, was_vectorized)
+
+        doc = store.get_doc(doc_id) or {}
+        doc["vectorized"] = bool(chunks)
+        doc["chunks"] = chunks
         store.save_doc(doc)
 
         store.set_status(doc_id, DocStatus.SUMMARIZING, 55)

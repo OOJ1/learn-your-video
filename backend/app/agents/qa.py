@@ -61,8 +61,28 @@ def _truncate(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[:int(limit * 0.7)] + "\n\n……（省略）……\n\n" + text[-int(limit * 0.3):]
 
 
+def _article_hits(doc_id: str, question: str, doc: dict, flags: dict) -> list[dict]:
+    """长文向量检索。阈值同样是软过滤：命中为空时退回最近邻，交给模型自己判断。
+
+    与视频分支保持同一套策略——短视频/短文整篇只切出少数几块时相似度天然偏低，
+    一问就报错会让这类资料完全没法提问。
+    """
+    s = get_settings()
+    vs = get_vector_store()
+    hits = vs.query(question, top_k=s.ARTICLE_TOP_K, doc_id=doc_id,
+                    threshold=s.SCORE_THRESHOLD)
+    if not hits:
+        hits = vs.query(question, top_k=s.ARTICLE_TOP_K, doc_id=doc_id, threshold=-1.0)
+        total = int(doc.get("chunks") or 0)
+        flags["low_relevance"] = bool(hits) and total > s.ARTICLE_TOP_K
+    if not hits:
+        raise QAError("这篇文章还没有可检索的索引（可能向量化未完成），"
+                      "请点右上角「重试」重新处理")
+    return hits
+
+
 def build_local_context(doc_id: str, question: str) -> tuple[str, list[Ref], dict]:
-    """文章：整篇直投（不向量化）；视频：向量检索 Top-K 并带回时间戳。
+    """短文整篇直投、长文（已向量化）走 Top-K 检索；视频一律检索并带回时间戳。
 
     返回 (context, refs, flags)。flags["low_relevance"] 表示本地资料与问题相关度偏低。
     """
@@ -76,7 +96,15 @@ def build_local_context(doc_id: str, question: str) -> tuple[str, list[Ref], dic
     blocks: list[str] = []
     flags = {"low_relevance": False}
 
-    if doc.get("type") == "article":
+    if doc.get("type") == "article" and doc.get("vectorized"):
+        # 长文已切块入库：直投会撑爆上下文被截断、丢掉中间段落，检索反而更完整
+        for i, h in enumerate(_article_hits(doc_id, question, doc, flags), 1):
+            blocks.append(
+                f"【资料 {i}｜来源：{doc.get('filename')}｜相似度 {h['score']}】\n{h['text']}"
+            )
+            refs.append(Ref(i, "article", doc.get("filename", ""), doc_id=doc_id,
+                            snippet=h["text"][:120]))
+    elif doc.get("type") == "article":
         text = store.get_text(doc_id)
         if not text:
             raise QAError("原文尚未解析完成")

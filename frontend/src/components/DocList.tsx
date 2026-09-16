@@ -96,6 +96,14 @@ export function DocList({
                 {busy && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
                 {st.label}
               </Badge>
+              {d.status === "ready" && d.vectorized && (
+                <span
+                  className="shrink-0 rounded bg-indigo-50 px-1 py-0.5 text-[10px] text-indigo-600"
+                  title={`长文已切块并写入向量库（${d.chunks ?? 0} 块），问答走检索`}
+                >
+                  已建索引
+                </span>
+              )}
               {busy && <Progress value={d.progress || 0} className="flex-1" />}
               {d.status === "failed" && d.message && (
                 <span className="truncate text-[11px] text-red-600" title={d.message}>

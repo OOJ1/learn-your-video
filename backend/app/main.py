@@ -78,10 +78,10 @@ async def stop_services():
             for _f in ("DETACHED_PROCESS", "CREATE_NEW_PROCESS_GROUP"):
                 if hasattr(subprocess, _f):
                     flags |= getattr(subprocess, _f)
-            # 优先用 stop.ps1（与桌面「停止」完全一致）；失败再退回 stop.cmd
+            # 优先用 stop.ps1（与桌面「停止」完全一致）；失败再退回统一入口的 stop 动作
             for _args in (
                 ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", _STOP_SCRIPT],
-                ["cmd.exe", "/c", os.path.join(_PROJECT_ROOT, "stop.cmd")],
+                ["cmd.exe", "/c", _LAUNCHER, "stop"],
             ):
                 try:
                     subprocess.Popen(
@@ -143,7 +143,9 @@ def read_config():
         "has_llm_key": bool(s.OPENAI_API_KEY) and not s.OPENAI_API_KEY.startswith("sk-REPLACE"),
         "has_tavily_key": bool(s.TAVILY_API_KEY),
         "video_top_k": s.VIDEO_TOP_K,
+        "article_top_k": s.ARTICLE_TOP_K,
         "max_article_chars": s.MAX_ARTICLE_CHARS,
+        "article_vectorize_min_chars": s.ARTICLE_VECTORIZE_MIN_CHARS,
     }
 
 
@@ -179,7 +181,9 @@ def reload_config():
 
 
 # ---------- 桌面快捷方式 ----------
-_START_CMD = os.path.join(_PROJECT_ROOT, "start.cmd")
+# 启停已封装进单一入口「学习搭子.cmd」（菜单式：启动 / 停止 / 状态）。
+# 快捷方式不带参数 → 打开菜单；带 start / stop 参数 → 直接执行对应动作。
+_LAUNCHER = os.path.join(_PROJECT_ROOT, "学习搭子.cmd")
 _SHORTCUT_NAME = "学习搭子.lnk"
 # 快捷方式图标：优先用前端 public 里已做过多尺寸优化的 favicon.ico
 _ICON_PATH = os.path.join(_PROJECT_ROOT, "frontend", "public", "favicon.ico")
@@ -200,9 +204,10 @@ def shortcut_status():
 
 @app.post("/api/shortcut/create")
 def create_shortcut():
-    """在桌面创建/更新「学习搭子.lnk」：双击运行 start.cmd 启动全套服务，并带上项目图标。
+    """在桌面创建/更新「学习搭子.lnk」：双击打开统一入口（启动 / 停止 / 状态），并带上项目图标。
 
-    幂等：已存在时也会重写一遍，这样早先创建（没有图标）的快捷方式能借此补上图标。
+    幂等：已存在时也会重写一遍，这样早先创建（指向旧 start.cmd、没有图标）的
+    快捷方式能借此一并修正。
     """
     if sys.platform != "win32":
         return {"ok": False, "supported": False, "message": "仅支持 Windows 桌面快捷方式"}
@@ -219,8 +224,9 @@ def create_shortcut():
         ps = (
             "$ws = New-Object -ComObject WScript.Shell; "
             f"$sc = $ws.CreateShortcut('{lnk}'); "
-            f"$sc.TargetPath = '{_START_CMD}'; "
+            f"$sc.TargetPath = '{_LAUNCHER}'; "
             f"$sc.WorkingDirectory = '{_PROJECT_ROOT}'; "
+            "$sc.Arguments = ''; "
             "$sc.Description = '你的学习搭子 · 上传即总结'; "
             f"{icon_line}"
             "$sc.Save()"

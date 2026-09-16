@@ -89,6 +89,8 @@ export interface Doc {
   chars?: number;
   duration?: number;
   chunks?: number;
+  /** 文章：正文超过阈值、已切块写入向量库（问答走检索而不是整篇直投） */
+  vectorized?: boolean;
   segments?: number;
   language?: string;
   hotwords?: string;

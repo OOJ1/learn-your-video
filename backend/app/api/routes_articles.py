@@ -1,6 +1,7 @@
 """文章模块路由：上传 → 异步处理 → 摘要 → 导出。"""
 from __future__ import annotations
 
+import logging
 import pathlib
 import re
 from urllib.parse import quote
@@ -12,6 +13,9 @@ from app.config import get_settings
 from app.services.article import process_article, to_markdown
 from app.services.parsers import SUPPORTED_ARTICLE_EXT, SUPPORTED_PDF_EXT, ParseError
 from app.services.store import DocStatus, get_store, make_doc
+from app.services.vector import get_vector_store
+
+logger = logging.getLogger("app.articles")
 
 router = APIRouter(prefix="/api/articles", tags=["articles"])
 
@@ -137,6 +141,12 @@ def delete_article(doc_id: str):
         raise HTTPException(404, "文档不存在")
     if d.get("path"):
         pathlib.Path(d["path"]).unlink(missing_ok=True)
+    try:
+        get_vector_store().delete_doc(doc_id)
+    except Exception as e:
+        # 不阻断记录删除，但必须留痕——静默吞错会留下孤儿向量，
+        # 使已删除的文章仍能被问答检索到。
+        logger.warning("删除文章 %s 的向量失败（已保留记录删除）：%s", doc_id, e)
     store.delete_doc(doc_id)
     return {"ok": True}
 

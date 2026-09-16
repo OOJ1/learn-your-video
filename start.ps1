@@ -1,7 +1,7 @@
 ﻿# ============================================================
 #  你的学习搭子 (study-buddy) - 一键启动
 #
-#  用法：双击同目录下的 start.cmd（推荐），或在本目录执行 .\start.ps1
+#  用法：双击同目录下的「学习搭子.cmd」→ 选 1（推荐），或在本目录执行 .\start.ps1
 #
 #  它会做四件事：
 #    1) 清理 8000 / 5173 端口上的旧实例（可以重复双击，不会起两份）
@@ -9,7 +9,7 @@
 #    3) 等待后端健康检查通过
 #    4) 自动打开浏览器
 #
-#  停止：双击 stop.cmd
+#  停止：双击「学习搭子.cmd」→ 选 2，或在本目录执行 .\stop.ps1
 # ============================================================
 [CmdletBinding()]
 param(
@@ -116,7 +116,7 @@ function Start-HiddenProcess([string]$File, [string[]]$ArgList, [string]$WorkDir
         # 会抛「已添加项。字典中的关键字:...」。这里把它翻译成人话，避免用户看到天书。
         if ($_.Exception.Message -match '已添加项|已添加了具有相同键|already been added') {
             throw ("当前终端的环境变量里存在仅大小写不同的重复键（如 http_proxy / HTTP_PROXY），" +
-                "Windows 无法据此创建子进程。请直接双击 start.cmd 启动，或换一个干净的终端再试。" +
+                "Windows 无法据此创建子进程。请直接双击「学习搭子.cmd」启动，或换一个干净的终端再试。" +
                 " 原始错误：$($_.Exception.Message)")
         }
         throw
@@ -245,7 +245,7 @@ if ($beReady -and $feReady) {
     Say '       后端  http://127.0.0.1:8000/docs' Green
     Say "       健康  $health" DarkGray
     Say "       日志  $logDir\" DarkGray
-    Say '       停止  双击 stop.cmd' Yellow
+    Say '       停止  双击「学习搭子.cmd」选 2' Yellow
 
     if (-not $NoBrowser) {
         # 给前端/浏览器留一点缓冲，避免「弹窗了页面还没加载好」的尴尬
