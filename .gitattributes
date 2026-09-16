@@ -1,0 +1,9 @@
+# 统一换行符策略，避免在不同平台 clone 后行尾错乱
+* text=auto
+
+# Windows 批处理 / PowerShell 脚本必须保持 CRLF：
+# LF-only 的 .cmd 会让 goto / 标签（label）解析出错，且 Windows 记事本打开会连成一行。
+# 注意：本项目的中文脚本按 GBK 保存，git 只做行尾转换、不动编码。
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
