@@ -11,13 +11,20 @@
   overflow-x: hidden;
   color: #eaeefb;
   scroll-behavior: smooth;
+  /* 滚到首/尾后不再把滚动链透传给背后的应用页面（避免背后被悄悄滚走） */
+  overscroll-behavior-y: contain;
+  /* 背景本身不需要 fixed：.ld-root 已是 fixed 全屏，背景天然不动；
+     再叠加 background-attachment: fixed 会在滚动时触发整屏重绘、导致掉帧 */
   background:
     radial-gradient(70% 60% at 14% 8%, rgba(99, 102, 241, 0.34), transparent 60%),
     radial-gradient(58% 52% at 86% 6%, rgba(34, 211, 238, 0.26), transparent 60%),
     radial-gradient(72% 60% at 82% 96%, rgba(217, 70, 239, 0.26), transparent 60%),
     radial-gradient(60% 55% at 12% 92%, rgba(16, 185, 129, 0.20), transparent 60%),
     linear-gradient(160deg, #0a0f24 0%, #0d1330 46%, #0a1026 100%);
-  background-attachment: fixed;
+}
+/* 键盘翻页（PageDown / 空格 / 方向键）也自己处理：容器需可聚焦 */
+.ld-root:focus {
+  outline: none;
 }
 
 /* ---------- 背景：漂浮极光球 + 网格 ---------- */

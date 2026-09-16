@@ -176,6 +176,15 @@ export const api = {
       body: JSON.stringify({ patch }),
     }),
 
+  // ---------- 桌面快捷方式 ----------
+  shortcutStatus: () =>
+    req<{ ok: boolean; supported: boolean; exists: boolean }>("/api/shortcut/status"),
+  createShortcut: () =>
+    req<{ ok: boolean; existed?: boolean; path?: string; message: string }>(
+      "/api/shortcut/create",
+      { method: "POST" }
+    ),
+
   exportUrl: (t: DocType, id: string) => `${BASE}/api/${plural(t)}/${id}/export`,
   srtUrl: (id: string) => `${BASE}/api/videos/${id}/srt`,
   videoUrl: (id: string) => `${BASE}/api/videos/${id}/file`,

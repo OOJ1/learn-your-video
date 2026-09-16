@@ -22,7 +22,7 @@ function Root() {
   // 是否由「介绍一下自己」按钮打开：仅影响右上角按钮文案
   const [viaButton, setViaButton] = useState(false);
 
-  const enterApp = () => {
+  const enterApp = (configure = false) => {
     try {
       localStorage.setItem(SEEN_KEY, "1");
     } catch {
@@ -30,6 +30,8 @@ function Root() {
     }
     setViaButton(false);
     setShowLanding(false);
+    // 介绍页「去配置」：进入应用后直接打开设置中心
+    if (configure) window.dispatchEvent(new CustomEvent("sb:open-settings"));
   };
 
   // 介绍页以覆盖层呈现（.ld-root 已是 fixed 全屏），App 保持挂载：
@@ -43,7 +45,11 @@ function Root() {
         }}
       />
       {showLanding && (
-        <LandingPage onEnter={enterApp} enterLabel={viaButton ? "返回应用 →" : "跳过 →"} />
+        <LandingPage
+          onEnter={enterApp}
+          onConfigure={() => enterApp(true)}
+          enterLabel={viaButton ? "返回应用 →" : "跳过 →"}
+        />
       )}
     </>
   );

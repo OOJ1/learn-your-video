@@ -176,3 +176,85 @@ def reload_config():
     # 与 read_config 保持一致：返回当前 provider 实际生效的模型
     model = s.OPENAI_MODEL if s.LLM_PROVIDER == "openai" else s.OLLAMA_MODEL
     return {"ok": True, "llm_provider": s.LLM_PROVIDER, "llm_model": model}
+
+
+# ---------- 桌面快捷方式 ----------
+_START_CMD = os.path.join(_PROJECT_ROOT, "start.cmd")
+_SHORTCUT_NAME = "学习搭子.lnk"
+# 快捷方式图标：优先用前端 public 里已做过多尺寸优化的 favicon.ico
+_ICON_PATH = os.path.join(_PROJECT_ROOT, "frontend", "public", "favicon.ico")
+
+
+@app.get("/api/shortcut/status")
+def shortcut_status():
+    """桌面是否已有「学习搭子」快捷方式"""
+    if sys.platform != "win32":
+        return {"ok": True, "supported": False, "exists": False}
+    desktop = _get_desktop_dir()
+    return {
+        "ok": True,
+        "supported": True,
+        "exists": os.path.exists(os.path.join(desktop, _SHORTCUT_NAME)),
+    }
+
+
+@app.post("/api/shortcut/create")
+def create_shortcut():
+    """在桌面创建/更新「学习搭子.lnk」：双击运行 start.cmd 启动全套服务，并带上项目图标。
+
+    幂等：已存在时也会重写一遍，这样早先创建（没有图标）的快捷方式能借此补上图标。
+    """
+    if sys.platform != "win32":
+        return {"ok": False, "supported": False, "message": "仅支持 Windows 桌面快捷方式"}
+    try:
+        desktop = _get_desktop_dir()
+        lnk = os.path.join(desktop, _SHORTCUT_NAME)
+        existed = os.path.exists(lnk)
+
+        # 图标行：ico 存在才写（Windows 用 "路径,索引" 指定图标，0 = 第一个图标）
+        icon_line = ""
+        if os.path.exists(_ICON_PATH):
+            icon_line = f"$sc.IconLocation = '{_ICON_PATH},0'; "
+
+        ps = (
+            "$ws = New-Object -ComObject WScript.Shell; "
+            f"$sc = $ws.CreateShortcut('{lnk}'); "
+            f"$sc.TargetPath = '{_START_CMD}'; "
+            f"$sc.WorkingDirectory = '{_PROJECT_ROOT}'; "
+            "$sc.Description = '你的学习搭子 · 上传即总结'; "
+            f"{icon_line}"
+            "$sc.Save()"
+        )
+        r = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        if r.returncode != 0 or not os.path.exists(lnk):
+            return {"ok": False, "message": f"创建失败：{(r.stderr or r.stdout or '').strip()[:200]}"}
+        return {
+            "ok": True,
+            "existed": existed,
+            "path": lnk,
+            "icon": _ICON_PATH if icon_line else None,
+            "message": "已更新桌面快捷方式" if existed else "已在桌面创建「学习搭子」快捷方式",
+        }
+    except Exception as e:
+        return {"ok": False, "message": f"创建失败：{type(e).__name__}: {e}"}
+
+
+def _get_desktop_dir() -> str:
+    """取真实桌面路径（OneDrive 重定向也能拿到）"""
+    try:
+        r = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command",
+             "[Environment]::GetFolderPath('Desktop')"],
+            capture_output=True, text=True, timeout=10,
+        )
+        d = (r.stdout or "").strip()
+        if d:
+            return d
+    except Exception:
+        pass
+    return os.path.join(os.path.expanduser("~"), "Desktop")

@@ -1,125 +1,94 @@
-# 你的学习搭子 · 快速启动
+# 快速开始
 
 > 3 分钟跑起来。完整说明见 [README.md](./README.md)。
 
-## 一、前置条件（只需一次）
+## 1. 前置条件（只需一次）
 
-| 组件 | 要求 | 检查方法 |
-|---|---|---|
-| Python venv | 已建好（`E:\study-buddy\.venv`） | 目录存在即可 |
-| Node.js | ≥ 18 | `node -v` |
-| Ollama | 已安装且有模型 | `ollama list` 应看到 `qwen3.5:9b` |
-
-首次使用前，启动 Ollama 并确认模型：
+| 组件 | 要求 |
+|---|---|
+| Python 环境 | 已建好的 venv：`.venv/`（项目根目录） |
+| Node.js | ≥ 18（`node -v` 可查） |
+| Ollama | 已安装，且已拉取模型 |
 
 ```powershell
-ollama serve          # 保持窗口运行（或确认它已在后台）
-ollama list           # 需有 qwen3.5:9b；没有则 ollama pull qwen3.5:9b
+ollama serve             # 保持运行
+ollama pull qwen3.5:9b   # 想更快可换 qwen2.5:7b
 ```
 
-> 想更快可换 `qwen2.5:7b`（非推理模型）：`ollama pull qwen2.5:7b`，再改 `backend\.env` 里 `OLLAMA_MODEL=qwen2.5:7b`。
+> 不想用本地模型？把 `backend\.env` 改成 `LLM_PROVIDER=openai`，填好 `OPENAI_BASE_URL` 与 `OPENAI_API_KEY` 即可（DeepSeek / 通义千问等均可）。
 
-## 二、一键启动（推荐）
+## 2. 一键启动
 
 ```powershell
-cd E:\study-buddy
-powershell -ExecutionPolicy Bypass -File .\start.ps1
+cd study-buddy
+.\start.ps1        # 或直接双击 start.cmd
 ```
 
-脚本会自动：启动后端(:8000) → 启动前端(:5173) → 健康检查。
+脚本会依次：清理旧实例 → 启动后端（:8000）→ 启动前端（:5173）→ 确认页面可用后自动打开浏览器。
 
-看到 `Health check: 200` 即成功。
+**停止**：双击 `stop.cmd`（或 `.\stop.ps1`），会释放 8000 / 5173。也可以在网页右上角直接点「停止」。
 
-**手动启动（备用）：**
+> 服务以隐藏窗口后台运行，不再弹 cmd 窗口；日志写入 `logs\`。
+> 想看实时日志：`Get-Content .\logs\backend.log -Wait -Tail 50`
+
+### 手动启动（备用）
 
 ```powershell
 # 终端 1：后端
-E:\study-buddy\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --app-dir E:\study-buddy\backend
+.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --app-dir backend
 
 # 终端 2：前端
-cd E:\study-buddy\frontend
+cd frontend
 npx vite --host 127.0.0.1
 ```
 
-**查看后端日志（终端输出）：**
-
-日志随服务启动实时写入文件：
-
-| 服务 | 日志文件 |
-|---|---|
-| 后端 | `E:\study-buddy\logs\backend.log` |
-| 前端 | `E:\study-buddy\logs\frontend.log` |
-
-实时滚动查看（PowerShell，`-Wait` 等价于 Linux `tail -f`）：
-
-```powershell
-Get-Content E:\study-buddy\logs\backend.log -Wait -Tail 50
-```
-
-也可以直接用 VS Code 打开日志文件。想看"原始终端滚屏"，用手动启动方式即可——输出直接打印在窗口里。
-
-## 三、开始使用
+## 3. 开始使用
 
 浏览器打开 **<http://127.0.0.1:5173>**
 
-1. **上传**：左侧拖入文章（txt/md/pdf）或视频（mp4）
-2. **等处理**：状态从「解析中 → 摘要生成中 → 已完成」。文章约 15–30 秒；视频需先转写，更长
-3. **看总结**：视频会额外给出**类型识别**（教程/访谈/会议/评测等）和**含金量评分**
-   —— 信息密度 / 实用性 / 结构清晰度 / 观点独特性 / 时效性 各 20 分，总分 100，附评语与观看建议
-4. **问答**：右下聊天框提问，回答带 `[n]` 引用；视频引用可点击跳转到对应秒数
-5. **导出**：摘要页点「导出 Markdown」
-6. **出问题？**
-   - 状态「失败」→ 点卡片上的 **重试**，重跑完整流程（解析/转写 + 向量化 + 摘要）
-   - 只是想换个摘要 → 点 **重新生成**，复用已有转写只重跑摘要，快得多
+1. **上传**：左侧拖入文章（txt / md / pdf）或视频（mp4）
+2. **等处理**：解析中 → 摘要生成中 → 已完成（文章十几秒；视频需先转写，更长）
+3. **看总结**：视频会额外给出类型识别与含金量评分
+4. **问答**：右下聊天框提问，回答带 `[n]` 引用；视频引用可点击跳到对应秒数
+5. **导出**：摘要页点「导出 Markdown」，或下载 SRT 字幕
+6. **出问题**：卡片上「**重试**」重跑完整流程；只想换摘要点「**重新生成**」，快得多
 
-## 四、申请 Tavily Key（启用联网搜索）
+## 4. 首次使用前：先配置大模型
 
-> 不配也能用，只是问答不会联网。DDG 在国内不通，Tavily 是目前唯一实测可达的引擎。
+「学习搭子」依赖大模型完成总结与问答，**本地 Ollama 与云端 API 至少配置其一，否则无法使用**：
 
-1. 打开 **<https://tavily.com>**，点右上角 **Sign up**
-2. 用 Google / GitHub 账号或邮箱注册（**免费额度 1000 次/月，不用绑信用卡**）
-3. 登录后进入 Dashboard，首页即可看到 **API Key**，形如 `tvly-abc123...`，点复制
-4. 编辑 `E:\study-buddy\backend\.env`，填入：
+- **本地 Ollama**：完成上面的 `ollama serve` + `ollama pull` 即可
+- **云端 API**：网页右上角「设置中心」→ 选「云端 API」→ 填 Base URL / API Key / 模型名
 
-   ```ini
-   TAVILY_API_KEY=tvly-你的真实Key
-   ```
+以通义千问为例（设置中心里有「?」悬停指引）：
 
-   ⚠️ 必须是**纯英文数字**，不要带引号、空格或中文注释在同一行。
+1. 打开 <https://bailian.aliyun.com> 注册 / 登录
+2. 控制台 →「API-KEY 管理」→ 创建并复制 `sk-` 开头的密钥
+3. Base URL 填 `https://dashscope.aliyuncs.com/compatible-mode/v1`，模型名填 `qwen-plus`
+4. 粘贴 Key → 保存
 
-5. **重启后端**生效（或调用 `POST /api/config/reload`）
-6. 验证：`GET http://127.0.0.1:8000/api/config` 里 `has_tavily_key` 应为 `true`
+## 5. 可选：联网搜索
 
-之后问答时把「联网」设为 **自动** 或 **开**，LLM 判断本地知识不足时会自动搜索，回答里会带网页引用 `[n]`。
+不配也能用，只是问答不会联网。DuckDuckGo 在国内不通，需自备 Tavily Key：
 
-## 五、可选配置（`backend\.env`）
+1. 打开 <https://tavily.com> 注册（免费 1000 次/月，不用绑卡）
+2. Dashboard 复制形如 `tvly-xxx` 的 Key
+3. 写入 `backend\.env`：`TAVILY_API_KEY=tvly-你的Key`（纯英文数字，不要带引号）
+4. 重启后端生效；`GET http://127.0.0.1:8000/api/config` 中 `has_tavily_key` 应为 `true`
 
-```ini
-# 换云端大模型（DeepSeek / 通义 / 智谱等 OpenAI 兼容端点）
-LLM_PROVIDER=openai
-OPENAI_BASE_URL=https://api.deepseek.com/v1
-OPENAI_API_KEY=sk-xxxx
+## 6. 环境自检
+
+```powershell
+.venv\Scripts\python.exe backend\scripts\check_env.py
 ```
 
-改完 `.env` 重启后端生效。
-
-## 六、常见问题
+## 7. 常见问题
 
 | 现象 | 处理 |
 |---|---|
-| 页面打不开 | 确认前端窗口在跑；用 `http://127.0.0.1:5173` 而非 localhost:8000 |
-| 摘要一直转圈 | Ollama 没启动 → `ollama serve`；或看 `E:\study-buddy\logs\backend.err` |
-| 回答为空/报错 | `OLLAMA_THINK=false` 未生效？确认 `.env` 存在该项 |
-| 重启后列表还在 | 正常，内存存储已 JSON 落盘（`backend/data/store/`） |
-| 联网回答"资料中未提及" | 未配 Tavily Key，属预期降级 |
-| 环境自检 | `E:\study-buddy\.venv\Scripts\python.exe E:\study-buddy\backend\scripts\check_env.py` |
-
-## 七、关闭服务
-
-直接关闭对应终端窗口，或：
-
-```powershell
-# 杀掉后端与前端进程
-Get-NetTCPConnection -LocalPort 8000,5173 -State Listen |
-  ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
-```
+| 页面打不开 | 确认前端在运行；地址用 `http://127.0.0.1:5173`（不是 8000） |
+| 摘要一直转圈 | Ollama 没启动 → `ollama serve`；或查看 `logs\` 下的日志 |
+| 回答为空 / 报错 | 确认模型可用，且 `backend\.env` 中 `OLLAMA_THINK=false` |
+| 重启后列表还在 | 正常，数据已 JSON 落盘 |
+| 联网回答「资料中未提及」 | 未配置 Tavily Key，属预期降级 |
+| 想彻底关掉服务 | 双击 `stop.cmd`，或在页面右上角点「停止」 |

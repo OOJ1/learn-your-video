@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { Settings, X, Eye, EyeOff, CheckCircle2, AlertTriangle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { Settings, X, Eye, EyeOff, CheckCircle2, AlertTriangle, HelpCircle } from "lucide-react";
 import { api } from "../lib/api";
 import { Button, Input } from "./ui";
 
@@ -11,9 +12,66 @@ type Cfg = {
   search_provider: string;
 };
 
+/** 千问 API 接入步骤：鼠标悬停「?」时展示（传送至 body 渲染，避免被弹窗 overflow 裁剪） */
+function QwenHelpTip() {
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const iconRef = useRef<SVGSVGElement>(null);
+
+  const show = () => {
+    const r = iconRef.current?.getBoundingClientRect();
+    if (r) setPos({ x: r.left + r.width / 2, y: r.bottom + 6 });
+  };
+
+  return (
+    <span
+      className="relative inline-flex"
+      onMouseEnter={show}
+      onMouseLeave={() => setPos(null)}
+    >
+      <HelpCircle ref={iconRef} className="h-3.5 w-3.5 cursor-help text-muted-foreground" />
+      {pos &&
+        createPortal(
+          <span
+            className="fixed z-[60] w-72 -translate-x-1/2 rounded-lg border border-white/10 bg-slate-900/95 p-3 text-[11px] leading-relaxed text-slate-100 shadow-xl"
+            style={{ left: pos.x, top: pos.y }}
+          >
+            <b>如何获取大模型 API（以通义千问 Qwen 为例）：</b>
+            <br />
+            1. 打开阿里云百炼 <b>bailian.aliyun.com</b>，注册 / 登录（支付宝、淘宝账号可直接登录）
+            <br />
+            2. 进入控制台 →「API-KEY 管理」→ 创建 API Key，复制以 <b>sk-</b> 开头的密钥
+            <br />
+            3. 上方选择「云端 API」，Base URL 填{" "}
+            <b>https://dashscope.aliyuncs.com/compatible-mode/v1</b>，模型名填{" "}
+            <b>qwen-plus</b>（便宜可用 qwen-turbo，更强用 qwen-max）
+            <br />
+            4. 把 API Key 粘贴到下方输入框，点「保存」即可
+            <br />
+            <span className="text-slate-400">
+              新用户通常有免费额度；DeepSeek 等其他 OpenAI 兼容服务同理，换 Base URL 和模型名即可。
+            </span>
+          </span>,
+          document.body
+        )}
+    </span>
+  );
+}
+
 /** 右上角设置中心：配置大模型与联网搜索的 API Key */
-export function SettingsDialog() {
-  const [open, setOpen] = useState(false);
+export function SettingsDialog({
+  open: openProp,
+  onOpenChange,
+}: {
+  /** 受控模式：由外部（如介绍页「去配置」）控制开关；不传则组件内部自管 */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const [openInner, setOpenInner] = useState(false);
+  const open = openProp !== undefined ? openProp : openInner;
+  const setOpen = (v: boolean) => {
+    if (onOpenChange) onOpenChange(v);
+    else setOpenInner(v);
+  };
   const [cfg, setCfg] = useState<Cfg | null>(null);
   const [provider, setProvider] = useState("ollama");
   const [model, setModel] = useState("");
@@ -72,7 +130,10 @@ export function SettingsDialog() {
         <Settings className="h-3.5 w-3.5" />
       </Button>
 
-      {open && (
+      {/* 弹窗遮罩必须传送到 body：header 带 backdrop-filter，会让内部的
+          fixed 定位退化为相对 header 定位，弹窗会塌成一条线无法显示 */}
+      {open &&
+      createPortal(
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/35 p-8 backdrop-blur-sm">
           <div className="max-h-full w-full max-w-lg overflow-y-auto rounded-2xl border border-white/70 bg-white/80 shadow-[0_24px_70px_rgba(15,23,42,0.3),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-2xl">
             <div className="flex items-center gap-2 border-b border-white/50 px-4 py-3">
@@ -87,7 +148,10 @@ export function SettingsDialog() {
             <div className="space-y-4 p-4">
               {/* 大模型 */}
               <div className="space-y-2">
-                <p className="text-xs font-semibold">大模型</p>
+                <p className="flex items-center gap-1.5 text-xs font-semibold">
+                  大模型
+                  <QwenHelpTip />
+                </p>
                 <div className="flex gap-3 text-xs">
                   {[
                     { v: "ollama", label: "本地 Ollama" },
@@ -217,7 +281,8 @@ export function SettingsDialog() {
               </Button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

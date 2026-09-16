@@ -15,7 +15,7 @@
 param(
     [switch]$NoBrowser,       # 加这个参数则不自动打开浏览器
     [int]$TimeoutSec = 90,    # 等待后端就绪的最长秒数
-    [int]$OpenDelaySec = 0.5    # 确认就绪到真正打开浏览器之间的缓冲秒数（避免页面还没加载好就弹窗）
+    [int]$OpenDelaySec = 1    # 确认就绪到真正打开浏览器之间的缓冲秒数（避免页面还没加载好就弹窗）
 )
 
 $root = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Definition }

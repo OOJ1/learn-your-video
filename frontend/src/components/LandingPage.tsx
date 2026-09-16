@@ -12,8 +12,12 @@ import {
   MessageSquare,
   Star,
   ArrowDown,
+  MonitorDown,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 import "./landing.css";
+import { api } from "../lib/api";
 
 type IconCmp = ComponentType<{ className?: string }>;
 
@@ -84,7 +88,7 @@ const FEATURES: { tag: string; Icon: IconCmp; title: string; desc: string; point
 const STATS: { value: number; decimals: number; suffix: ReactNode; label: string }[] = [
   // 「vv」两字紧排后形似 w（万），配合 + 号即「10 万+」的观感
   { value: 10, decimals: 0, suffix: <><span className="ld-vv">vv</span>+</>, label: "累计学习者" },
-  { value: 50, decimals: 0, suffix: "+", label: "支持语言" },
+  { value: 5.0, decimals: 0, suffix: "+", label: "支持语言" },
   { value: 91.78, decimals: 2, suffix: "%", label: "服务可用性" },
 ];
 
@@ -92,7 +96,7 @@ const QUOTES = [
   { name: "林同学", role: "研究生", text: "一节 90 分钟的公开课，先扫一遍要点，只跳着看关键段落，时间省了一大半。" },
   { name: "Kevin", role: "产品经理", text: "访谈视频里的图表以前全靠截图记，现在画面要点直接列出来，还能跳回原位置。" },
   { name: "阿哲", role: "考证党", text: "知识笔记整理得很像人写的，拿来当复习提纲改一改就能用。" },
-  { name: "Mia", role: "内容运营", text: "英文视频转写不会被乱翻译，问答时引用来源标得清清楚楚，很省心。" },
+  { name: "OOJ", role: "牛马", text: "MJ，MJ你快回来吧！这个也太好用了！" },
 ];
 
 /* ---------------- 通用动效组件 ---------------- */
@@ -220,15 +224,50 @@ function Typewriter({ text, speed = 95, startDelay = 350 }: { text: string; spee
 
 export function LandingPage({
   onEnter,
+  onConfigure,
   enterLabel = "跳过 →",
 }: {
   onEnter: () => void;
+  /** 「去配置大模型」：进入应用并直接打开设置中心 */
+  onConfigure?: () => void;
   /** 右上角按钮文案：首次进入是「跳过」，从应用内回看时是「返回应用」 */
   enterLabel?: string;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [progress, setProgress] = useState(0);
   const [y, setY] = useState(0);
+  // 桌面快捷方式：idle 未创建 / creating 创建中 / done 已创建 / failed 失败
+  const [shortcut, setShortcut] = useState<"idle" | "creating" | "done" | "failed">("idle");
+  const [shortcutMsg, setShortcutMsg] = useState("");
+
+  // 桌面上已经有快捷方式时直接显示「已创建」，避免重复询问
+  useEffect(() => {
+    api
+      .shortcutStatus()
+      .then((r: any) => {
+        if (r?.supported && r?.exists) setShortcut("done");
+      })
+      .catch(() => {});
+  }, []);
+
+  const createShortcut = async () => {
+    if (shortcut === "creating") return;
+    setShortcut("creating");
+    setShortcutMsg("");
+    try {
+      const r = await api.createShortcut();
+      if (r.ok) {
+        setShortcut("done");
+        setShortcutMsg(r.message || "已创建桌面快捷方式");
+      } else {
+        setShortcut("failed");
+        setShortcutMsg(r.message || "创建失败");
+      }
+    } catch (e: any) {
+      setShortcut("failed");
+      setShortcutMsg(e?.message || "创建失败，请稍后再试");
+    }
+  };
 
   // 顶部进度条 + 视差：滚动容器是根节点本身，而非 window
   useEffect(() => {
@@ -263,8 +302,137 @@ export function LandingPage({
     return () => window.clearTimeout(t);
   }, []);
 
+  // 页内锚点跳转：滚动容器是 .ld-root 而非 window，原生 #锚点 不会滚动，
+  // 这里手动滚动；平滑滚动失效（部分嵌入式浏览器）时 400ms 后瞬时兜底
+  const scrollToSection = (id: string) => {
+    const root = rootRef.current;
+    const el = root?.querySelector(`#${id}`) as HTMLElement | null;
+    if (!root || !el) return;
+    // 对齐到板块顶部（= 分页清单里的一个整页位置），避免落在两页之间
+    const target = Math.max(0, el.offsetTop);
+    root.scrollTo({ top: target, behavior: "smooth" });
+    window.setTimeout(() => {
+      if (Math.abs(root.scrollTop - target) > 4) root.scrollTop = target;
+    }, 400);
+  };
+
+  // 让滚动容器拿到焦点：div 不聚焦时收不到 PageDown / 空格 / 方向键，
+  // 键盘用户就没法翻页（preventScroll 避免聚焦本身触发一次滚动）
+  useEffect(() => {
+    rootRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  // ---------- 「一页一页」分页滚动 ----------
+  // 为什么不直接用 CSS scroll-snap: mandatory —— 实测「一次滚一格」会被吸附打回本页
+  // （单格位移不够跨越半个板块，浏览器又把你拉回当前吸附点），观感就是「滚不动」。
+  // 这里改为自己接管滚轮/键盘：一次手势翻一页，翻到首/尾不再透传给背后的应用页面。
+  // 页面清单 = 各板块顶部；比一屏高的板块（功能）按一屏拆成多页，保证中间内容都读得到。
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    // 尊重系统「减少动效」偏好：这类用户直接走原生滚动，不做接管
+    const reduce =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) return;
+
+    let pages: number[] = [];
+    const computePages = () => {
+      const vh = root.clientHeight;
+      const max = Math.max(0, root.scrollHeight - vh);
+      const stops: number[] = [0, max];
+      root.querySelectorAll(":scope > section").forEach((s) => {
+        const el = s as HTMLElement;
+        const top = el.offsetTop;
+        const h = el.offsetHeight;
+        if (h <= vh * 1.05) {
+          stops.push(top);
+        } else {
+          // 超高板块：从顶部按整屏切分，最后一页对齐底部
+          for (let y = top; y + vh < top + h; y += vh) stops.push(y);
+          stops.push(top + h - vh);
+        }
+      });
+      const clamped = stops
+        .map((v) => Math.max(0, Math.min(max, Math.round(v))))
+        .sort((a, b) => a - b);
+      const out: number[] = [];
+      for (const v of clamped) if (!out.length || v - out[out.length - 1] > 40) out.push(v);
+      pages = out;
+    };
+
+    let animating = false;
+    let animTimer = 0;
+    const goTo = (top: number) => {
+      animating = true;
+      root.scrollTo({ top, behavior: "smooth" });
+      window.clearTimeout(animTimer);
+      animTimer = window.setTimeout(() => (animating = false), 700);
+    };
+
+    const step = (dir: 1 | -1) => {
+      const cur = root.scrollTop;
+      const next =
+        dir > 0
+          ? pages.find((p) => p > cur + 8)
+          : [...pages].reverse().find((p) => p < cur - 8);
+      if (next != null) goTo(next);
+    };
+
+    // 滚轮：累计位移过阈值才翻一页，避免触控板的细碎事件一次翻好几页
+    let accum = 0;
+    let accumTimer = 0;
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) return; // Ctrl+滚轮 = 缩放，不接管
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return; // 横向手势交给默认行为
+      e.preventDefault();
+      if (animating) return;
+      const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? root.clientHeight : 1);
+      accum += dy;
+      window.clearTimeout(accumTimer);
+      accumTimer = window.setTimeout(() => (accum = 0), 220);
+      const TH = 22;
+      if (accum >= TH) {
+        accum = 0;
+        step(1);
+      } else if (accum <= -TH) {
+        accum = 0;
+        step(-1);
+      }
+    };
+
+    const onKey = (e: KeyboardEvent) => {
+      const k = e.key;
+      if (k === "PageDown" || k === " " || k === "ArrowDown") {
+        e.preventDefault();
+        step(1);
+      } else if (k === "PageUp" || k === "ArrowUp") {
+        e.preventDefault();
+        step(-1);
+      } else if (k === "Home") {
+        e.preventDefault();
+        goTo(0);
+      } else if (k === "End") {
+        e.preventDefault();
+        goTo(root.scrollHeight);
+      }
+    };
+
+    computePages();
+    root.addEventListener("wheel", onWheel, { passive: false });
+    root.addEventListener("keydown", onKey);
+    window.addEventListener("resize", computePages);
+    return () => {
+      root.removeEventListener("wheel", onWheel);
+      root.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", computePages);
+      window.clearTimeout(animTimer);
+      window.clearTimeout(accumTimer);
+    };
+  }, []);
+
   return (
-    <div ref={rootRef} className="ld-root">
+    <div ref={rootRef} className="ld-root" tabIndex={-1}>
       <div className="ld-progress" style={{ width: `${progress * 100}%` }} />
 
       <div className="ld-orbs">
@@ -293,7 +461,7 @@ export function LandingPage({
       <section id="hero" className="relative z-10 flex min-h-screen flex-col items-center justify-center px-6 text-center">
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <div
-            className="h-[520px] w-[520px] rounded-full bg-gradient-to-tr from-indigo-500/30 via-cyan-400/20 to-fuchsia-500/25 blur-[90px]"
+            className="h-[420px] w-[420px] rounded-full bg-gradient-to-tr from-indigo-500/30 via-cyan-400/20 to-fuchsia-500/25 blur-[70px] will-change-transform"
             style={{ transform: `translateY(${y * 0.16}px)` }}
           />
         </div>
@@ -321,12 +489,12 @@ export function LandingPage({
             >
               开始使用 →
             </button>
-            <a
-              href="#features"
+            <button
+              onClick={() => scrollToSection("features")}
               className="ld-card px-7 py-3 text-sm text-slate-200 hover:text-white"
             >
               了解功能
-            </a>
+            </button>
           </div>
         </div>
 
@@ -482,6 +650,57 @@ export function LandingPage({
       {/* 6. 底部 CTA：渐变动画 */}
       <section id="cta" className="relative z-10 px-6 pb-24 pt-6">
         <div className="mx-auto max-w-5xl">
+          {/* 首次使用必读：必须配置大模型；顺带提供桌面快捷方式 */}
+          <Reveal variant="zoom">
+            <div className="ld-card mb-8 p-6 sm:p-8">
+              <p className="flex items-center gap-2 text-sm font-semibold text-amber-200">
+                <AlertTriangle className="h-4 w-4" />
+                开始之前，请先完成一次配置
+              </p>
+              <p className="mt-3 text-sm leading-relaxed text-slate-300/85">
+                「学习搭子」依赖大模型完成总结与问答：<b>本地 Ollama</b> 或{" "}
+                <b>云端 API Key</b>（DeepSeek / 通义千问等均可）至少配置其一，
+                <span className="text-amber-200">否则无法使用</span>。
+                设置中心里有「?」悬停指引，教你一步步申请千问 API。
+              </p>
+              <div className="mt-5 flex flex-wrap items-center gap-3">
+                <button
+                  onClick={onConfigure || onEnter}
+                  className="ld-cta-grad rounded-xl px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-900/40 transition-transform hover:scale-[1.03]"
+                >
+                  去配置大模型 / API →
+                </button>
+
+                <button
+                  onClick={createShortcut}
+                  disabled={shortcut === "creating" || shortcut === "done"}
+                  className="ld-card inline-flex items-center gap-2 px-5 py-2.5 text-sm text-slate-200 hover:text-white disabled:opacity-70"
+                  title="在桌面创建「学习搭子」快捷方式，以后双击即可启动"
+                >
+                  {shortcut === "done" ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                  ) : (
+                    <MonitorDown className="h-4 w-4" />
+                  )}
+                  {shortcut === "creating"
+                    ? "正在创建…"
+                    : shortcut === "done"
+                      ? "快捷方式已就绪"
+                      : "在桌面创建快捷方式"}
+                </button>
+              </div>
+              {shortcutMsg && (
+                <p
+                  className={`mt-3 text-[11px] ${
+                    shortcut === "failed" ? "text-red-400" : "text-emerald-300"
+                  }`}
+                >
+                  {shortcutMsg}
+                </p>
+              )}
+            </div>
+          </Reveal>
+
           <Reveal variant="zoom">
             <div className="ld-cta-grad rounded-[26px] p-[1.5px] shadow-2xl shadow-indigo-950/40">
               <div className="rounded-[25px] bg-slate-950/85 px-8 py-14 text-center backdrop-blur-xl">

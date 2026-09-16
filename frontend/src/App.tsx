@@ -24,6 +24,14 @@ export default function App({ onShowIntro }: { onShowIntro?: () => void }) {
   const retryRef = useRef(0);
   /** 停止服务状态：idle 正常 / stopping 点击后等待 / stopped 已停止 */
   const [stopState, setStopState] = useState<"idle" | "stopping" | "stopped">("idle");
+  /** 设置中心开关（受控）：介绍页「去配置」通过自定义事件直接打开 */
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    const onOpenSettings = () => setSettingsOpen(true);
+    window.addEventListener("sb:open-settings", onOpenSettings);
+    return () => window.removeEventListener("sb:open-settings", onOpenSettings);
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -182,7 +190,7 @@ export default function App({ onShowIntro }: { onShowIntro?: () => void }) {
             <RefreshCw className="h-3 w-3 shrink-0" />
           </button>
         )}
-        <SettingsDialog />
+        <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
         {stopState === "idle" && (
           <Button size="sm" variant="destructive" onClick={onStop} title="停止并关闭所有服务">
             <Power className="h-3.5 w-3.5" />
