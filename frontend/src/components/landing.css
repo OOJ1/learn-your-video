@@ -22,10 +22,6 @@
     radial-gradient(60% 55% at 12% 92%, rgba(16, 185, 129, 0.20), transparent 60%),
     linear-gradient(160deg, #0a0f24 0%, #0d1330 46%, #0a1026 100%);
 }
-/* 键盘翻页（PageDown / 空格 / 方向键）也自己处理：容器需可聚焦 */
-.ld-root:focus {
-  outline: none;
-}
 
 /* ---------- 背景：漂浮极光球 + 网格 ---------- */
 .ld-orbs {

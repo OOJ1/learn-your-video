@@ -308,131 +308,15 @@ export function LandingPage({
     const root = rootRef.current;
     const el = root?.querySelector(`#${id}`) as HTMLElement | null;
     if (!root || !el) return;
-    // 对齐到板块顶部（= 分页清单里的一个整页位置），避免落在两页之间
-    const target = Math.max(0, el.offsetTop);
+    const target = Math.max(0, el.offsetTop - 8);
     root.scrollTo({ top: target, behavior: "smooth" });
     window.setTimeout(() => {
       if (Math.abs(root.scrollTop - target) > 4) root.scrollTop = target;
     }, 400);
   };
 
-  // 让滚动容器拿到焦点：div 不聚焦时收不到 PageDown / 空格 / 方向键，
-  // 键盘用户就没法翻页（preventScroll 避免聚焦本身触发一次滚动）
-  useEffect(() => {
-    rootRef.current?.focus({ preventScroll: true });
-  }, []);
-
-  // ---------- 「一页一页」分页滚动 ----------
-  // 为什么不直接用 CSS scroll-snap: mandatory —— 实测「一次滚一格」会被吸附打回本页
-  // （单格位移不够跨越半个板块，浏览器又把你拉回当前吸附点），观感就是「滚不动」。
-  // 这里改为自己接管滚轮/键盘：一次手势翻一页，翻到首/尾不再透传给背后的应用页面。
-  // 页面清单 = 各板块顶部；比一屏高的板块（功能）按一屏拆成多页，保证中间内容都读得到。
-  useEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
-    // 尊重系统「减少动效」偏好：这类用户直接走原生滚动，不做接管
-    const reduce =
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduce) return;
-
-    let pages: number[] = [];
-    const computePages = () => {
-      const vh = root.clientHeight;
-      const max = Math.max(0, root.scrollHeight - vh);
-      const stops: number[] = [0, max];
-      root.querySelectorAll(":scope > section").forEach((s) => {
-        const el = s as HTMLElement;
-        const top = el.offsetTop;
-        const h = el.offsetHeight;
-        if (h <= vh * 1.05) {
-          stops.push(top);
-        } else {
-          // 超高板块：从顶部按整屏切分，最后一页对齐底部
-          for (let y = top; y + vh < top + h; y += vh) stops.push(y);
-          stops.push(top + h - vh);
-        }
-      });
-      const clamped = stops
-        .map((v) => Math.max(0, Math.min(max, Math.round(v))))
-        .sort((a, b) => a - b);
-      const out: number[] = [];
-      for (const v of clamped) if (!out.length || v - out[out.length - 1] > 40) out.push(v);
-      pages = out;
-    };
-
-    let animating = false;
-    let animTimer = 0;
-    const goTo = (top: number) => {
-      animating = true;
-      root.scrollTo({ top, behavior: "smooth" });
-      window.clearTimeout(animTimer);
-      animTimer = window.setTimeout(() => (animating = false), 700);
-    };
-
-    const step = (dir: 1 | -1) => {
-      const cur = root.scrollTop;
-      const next =
-        dir > 0
-          ? pages.find((p) => p > cur + 8)
-          : [...pages].reverse().find((p) => p < cur - 8);
-      if (next != null) goTo(next);
-    };
-
-    // 滚轮：累计位移过阈值才翻一页，避免触控板的细碎事件一次翻好几页
-    let accum = 0;
-    let accumTimer = 0;
-    const onWheel = (e: WheelEvent) => {
-      if (e.ctrlKey) return; // Ctrl+滚轮 = 缩放，不接管
-      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return; // 横向手势交给默认行为
-      e.preventDefault();
-      if (animating) return;
-      const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? root.clientHeight : 1);
-      accum += dy;
-      window.clearTimeout(accumTimer);
-      accumTimer = window.setTimeout(() => (accum = 0), 220);
-      const TH = 22;
-      if (accum >= TH) {
-        accum = 0;
-        step(1);
-      } else if (accum <= -TH) {
-        accum = 0;
-        step(-1);
-      }
-    };
-
-    const onKey = (e: KeyboardEvent) => {
-      const k = e.key;
-      if (k === "PageDown" || k === " " || k === "ArrowDown") {
-        e.preventDefault();
-        step(1);
-      } else if (k === "PageUp" || k === "ArrowUp") {
-        e.preventDefault();
-        step(-1);
-      } else if (k === "Home") {
-        e.preventDefault();
-        goTo(0);
-      } else if (k === "End") {
-        e.preventDefault();
-        goTo(root.scrollHeight);
-      }
-    };
-
-    computePages();
-    root.addEventListener("wheel", onWheel, { passive: false });
-    root.addEventListener("keydown", onKey);
-    window.addEventListener("resize", computePages);
-    return () => {
-      root.removeEventListener("wheel", onWheel);
-      root.removeEventListener("keydown", onKey);
-      window.removeEventListener("resize", computePages);
-      window.clearTimeout(animTimer);
-      window.clearTimeout(accumTimer);
-    };
-  }, []);
-
   return (
-    <div ref={rootRef} className="ld-root" tabIndex={-1}>
+    <div ref={rootRef} className="ld-root">
       <div className="ld-progress" style={{ width: `${progress * 100}%` }} />
 
       <div className="ld-orbs">
@@ -461,7 +345,7 @@ export function LandingPage({
       <section id="hero" className="relative z-10 flex min-h-screen flex-col items-center justify-center px-6 text-center">
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <div
-            className="h-[420px] w-[420px] rounded-full bg-gradient-to-tr from-indigo-500/30 via-cyan-400/20 to-fuchsia-500/25 blur-[70px] will-change-transform"
+            className="h-[520px] w-[520px] rounded-full bg-gradient-to-tr from-indigo-500/30 via-cyan-400/20 to-fuchsia-500/25 blur-[90px]"
             style={{ transform: `translateY(${y * 0.16}px)` }}
           />
         </div>
