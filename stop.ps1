@@ -3,8 +3,18 @@
 
 param([switch]$Quiet)
 
-$ports = 8000, 5173
+# 顺序有讲究：先前端后后端。
+# 页面里的「停止」按钮是从后端进程里拉起本脚本的，所以本 PowerShell 是后端的子进程；
+# 而后端那步用的是 taskkill /T（连子进程一起结束），会把这个执行者自己一并带走。
+# 把后端放最后，才能保证前端已经处理完再"同归于尽"。
+$ports = 5173, 8000
 $ownNames = @('python', 'pythonw', 'node')   # 本项目的服务只会是这两类进程
+
+# taskkill 走绝对路径：受限环境（IDE / 沙箱）里 PATH 可能被裁剪，
+# 此时 `& taskkill` 会直接 CommandNotFound，$LASTEXITCODE 又会保持上一次的旧值，
+# 让下面的 fallback 判断失效——结果是进程一个都没杀掉，还报"已停止"。
+$taskkillExe = Join-Path $env:SystemRoot 'System32\taskkill.exe'
+if (-not (Test-Path $taskkillExe)) { $taskkillExe = 'taskkill' }
 
 function Write-Line([string]$msg, [string]$color = 'Gray') {
     if ($Quiet) { return }
@@ -43,6 +53,7 @@ function Test-PortOpen([int]$Port, [int]$TimeoutMs = 500) {
 
 $stopped = 0
 $skipped = @()
+$failed = @()
 
 # 收集要结束的 PID：
 #   1) netstat 看到的 8000/5173 监听进程
@@ -79,10 +90,21 @@ foreach ($opid in $targetPids) {
 
     Write-Line "[stop] -> 结束 $nm (pid $opid) 及其子进程" Yellow
     # /T 连子进程一起结束，/F 强制：vite / uvicorn 都可能带子进程
-    $null = & taskkill /PID $opid /T /F 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        # taskkill 不可用时退回 Stop-Process
-        try { Stop-Process -Id $opid -Force -ErrorAction Stop } catch { }
+    $done = $false
+    try {
+        & $taskkillExe /PID $opid /T /F 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { $done = $true }
+    } catch { }
+    if (-not $done) {
+        # taskkill 不可用/失败时退回 Stop-Process（无法连带子进程，但至少把端口放掉）
+        try {
+            Stop-Process -Id $opid -Force -ErrorAction Stop
+            $done = $true
+        } catch { }
+    }
+    if (-not $done) {
+        Write-Line "[stop] !! pid $opid ($nm) 未能结束（taskkill 与 Stop-Process 均失败）" Red
+        $failed += "$opid($nm)"
     }
     $stopped++
 }

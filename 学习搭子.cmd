@@ -1,20 +1,24 @@
 @echo off
 chcp 936 >nul
-title 学习搭子  -  控制台
+title 学习搭子
 cd /d "%~dp0"
 
 rem ==========================================================
 rem   你的学习搭子 · 统一启停入口
-rem     双击本文件                  -> 打开菜单
-rem     学习搭子.cmd start          -> 直接启动
-rem     学习搭子.cmd stop           -> 直接停止
-rem     学习搭子.cmd status         -> 直接查看状态
+rem     双击本文件                -> 直接启动（不进菜单）
+rem     学习搭子.cmd stop          -> 停止服务
+rem     学习搭子.cmd status       -> 查看运行状态
+rem     学习搭子.cmd menu         -> 打开菜单（启停面板）
 rem   带参数的用法供桌面快捷方式与页面内「停止」按钮调用。
 rem ==========================================================
 
-if /i "%~1"=="start"  goto once_start
+if /i "%~1"=="menu"   goto menu
 if /i "%~1"=="stop"   goto once_stop
 if /i "%~1"=="status" goto once_status
+
+rem 默认（无参数 / start）：直接启动，双击即用
+goto once_start
+
 
 :menu
 cls
@@ -93,6 +97,8 @@ if not "%RC%"=="0" goto act_start_fail
 echo   [完成] 两个服务已在后台运行，本窗口可以直接关掉。
 echo          前端  http://127.0.0.1:5173
 echo          后端  http://127.0.0.1:8000/docs
+echo.
+echo          停止：点网页右上角「停止」，或运行  学习搭子.cmd stop
 goto :eof
 
 :act_start_fail

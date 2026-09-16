@@ -67,17 +67,20 @@ _STOP_SCRIPT = os.path.join(_PROJECT_ROOT, "stop.ps1")
 async def stop_services():
     """停止整个「学习搭子」（后端 8000 + 前端 5173）。
 
-    关键点：用独立（detached）子进程去执行 stop.ps1，先把 200 响应发回浏览器，
-    再让子进程杀掉后端自身与前端的进程——否则自杀会卡在响应还没发出去。
+    关键点：用一个独立的后台子进程执行 stop.ps1，先把 200 响应发回浏览器，
+    再由它杀掉后端自身与前端的进程——否则自杀会卡在响应还没发出去。
+    子进程的创建标志必须用 CREATE_NO_WINDOW，原因见下方注释。
     """
     def _trigger():
         try:
             # 等本请求的响应先通过网络送出去
             time.sleep(1.0)
-            flags = 0
-            for _f in ("DETACHED_PROCESS", "CREATE_NEW_PROCESS_GROUP"):
-                if hasattr(subprocess, _f):
-                    flags |= getattr(subprocess, _f)
+            # 为什么不用 DETACHED_PROCESS：它创建的子进程没有控制台，而 powershell.exe
+            # 是控制台程序——无控制台时会「启动即退出、什么都不执行」（实测连
+            # `-Command "exit 7"` 都返回 0），于是停止脚本等于从没跑过，
+            # 表现为「点了停止按钮但服务还在」。CREATE_NO_WINDOW 提供一个隐藏控制台，
+            # 既能正常执行 PowerShell，又不会闪出黑窗口。
+            flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
             # 优先用 stop.ps1（与桌面「停止」完全一致）；失败再退回统一入口的 stop 动作
             for _args in (
                 ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", _STOP_SCRIPT],
@@ -226,7 +229,9 @@ def create_shortcut():
             f"$sc = $ws.CreateShortcut('{lnk}'); "
             f"$sc.TargetPath = '{_LAUNCHER}'; "
             f"$sc.WorkingDirectory = '{_PROJECT_ROOT}'; "
-            "$sc.Arguments = ''; "
+            # 带 start 参数：双击桌面图标直接启动服务，不弹菜单。
+            # 想停止时点网页右上角「停止」，或手动双击「学习搭子.cmd」进菜单选 2。
+            "$sc.Arguments = 'start'; "
             "$sc.Description = '你的学习搭子 · 上传即总结'; "
             f"{icon_line}"
             "$sc.Save()"
