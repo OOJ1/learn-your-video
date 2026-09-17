@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Send, Loader2, Globe, Link2, Play, BookOpen, AlertTriangle, Eye } from "lucide-react";
+import { Send, Loader2, Globe, Link2, Play, BookOpen, AlertTriangle, Eye, Lock } from "lucide-react";
 import { api, type Doc, type Ref } from "../lib/api";
-import { Button, Textarea } from "./ui";
+import { Button, Textarea, HoverTip } from "./ui";
 import { cn, fmtTime } from "../lib/utils";
 
 interface Msg {
@@ -24,26 +24,46 @@ interface Msg {
 export function ChatPanel({
   doc,
   onSeek,
+  configVersion = 0,
 }: {
   doc: Doc;
   onSeek?: (sec: number) => void;
+  /** 设置中心每保存一次自增：用于重新拉配置，让联网开关的锁死状态即时更新 */
+  configVersion?: number;
 }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [useWeb, setUseWeb] = useState<"auto" | "on" | "off">("auto");
-  const [searchOff, setSearchOff] = useState(false);
+  /** 联网可用性与不可用原因（后端 /api/config 唯一判定）；null = 尚未拉取 */
+  const [webStatus, setWebStatus] = useState<{ available: boolean; reason: string } | null>(null);
+  const webLocked = webStatus ? !webStatus.available : false;
+  const webReason = webStatus?.reason || "联网功能当前不可用，请到右上角设置中心检查";
   /** 历史问答载入中：避免切换视频时短暂显示上一个视频的问答记录 */
   const [histLoading, setHistLoading] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // 后端关闭联网搜索时，前端同步置灰「强制联网」，避免点了没反应
+  // 联网开关由后端判定：设置里关了联网、或没配 API Key，两档联网按钮都锁死，只能「仅本地」
   useEffect(() => {
     api
       .config()
-      .then((c: any) => setSearchOff((c?.search_provider || "off").toLowerCase() === "off"))
+      .then((c: any) => {
+        // 老版本后端可能没有 web_search_available 字段，按旧规则兜底推导
+        const available: boolean =
+          typeof c?.web_search_available === "boolean"
+            ? c.web_search_available
+            : (c?.search_provider || "off").toLowerCase() !== "off" && !!c?.has_tavily_key;
+        setWebStatus({
+          available,
+          reason:
+            c?.web_search_reason ||
+            (available ? "" : "联网功能当前不可用，请到右上角设置中心检查"),
+        });
+        // 已经选了联网、但当前不可用 → 回落到「仅本地」，避免发出一次注定不联网的请求
+        if (!available) setUseWeb("off");
+      })
       .catch(() => {});
-  }, []);
+  }, [configVersion]);
 
   useEffect(() => {
     let alive = true;
@@ -110,32 +130,53 @@ export function ChatPanel({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-11 shrink-0 items-center justify-between border-b border-white/60 bg-white/40 px-4 backdrop-blur">
-        <span className="text-xs font-semibold">问答</span>
-        <div className="flex items-center gap-1">
+      {/* 右侧问答列宽度只有 ~290px，标题 + 三档开关 + 状态提示挤在一行会把文字压成两行，
+          所以拆成两行：第一行「问答 + 联网状态」，第二行放三档开关 */}
+      <div className="shrink-0 border-b border-white/60 bg-white/40 px-3 py-2 backdrop-blur">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-semibold">问答</span>
+          {webLocked && (
+            <HoverTip content={webReason}>
+              <span className="flex cursor-help items-center gap-1 whitespace-nowrap rounded bg-slate-500/10 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                <Lock className="h-2.5 w-2.5 shrink-0" />
+                联网不可用
+              </span>
+            </HoverTip>
+          )}
+        </div>
+        <div className="mt-1.5 flex items-center gap-1">
           {(["auto", "on", "off"] as const).map((v) => {
-            const disabled = searchOff && v === "on";
-            return (
+            // 联网不可用时，「智能联网」「强制联网」全部锁死，只留「仅本地」
+            const locked = webLocked && v !== "off";
+            const label = v === "auto" ? "智能联网" : v === "on" ? "强制联网" : "仅本地";
+            const btn = (
               <button
-                key={v}
-                onClick={() => !disabled && setUseWeb(v)}
-                title={disabled ? "联网搜索已关闭，可在右上角设置中心开启" : undefined}
+                onClick={() => !locked && setUseWeb(v)}
+                aria-disabled={locked}
+                title={locked ? webReason : undefined}
                 className={cn(
-                  "rounded px-2 py-0.5 text-[11px] transition-colors",
-                  disabled
-                    ? "cursor-not-allowed text-muted-foreground/40 line-through"
-                    :                   useWeb === v
+                  "inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded px-2 py-0.5 text-[11px] transition-colors",
+                  locked
+                    ? "cursor-not-allowed text-muted-foreground/45 line-through"
+                    : useWeb === v
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:bg-white/50"
                 )}
               >
-                {v === "auto" ? "智能联网" : v === "on" ? "强制联网" : "仅本地"}
+                {locked && <Lock className="h-2.5 w-2.5 shrink-0" />}
+                {label}
               </button>
             );
+            return locked ? (
+              <HoverTip key={v} content={webReason}>
+                {btn}
+              </HoverTip>
+            ) : (
+              <span key={v} className="inline-flex">
+                {btn}
+              </span>
+            );
           })}
-          {searchOff && (
-            <span className="ml-1 text-[10px] text-muted-foreground">（联网已关闭）</span>
-          )}
         </div>
       </div>
 

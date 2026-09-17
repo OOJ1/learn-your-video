@@ -26,6 +26,8 @@ export default function App({ onShowIntro }: { onShowIntro?: () => void }) {
   const [stopState, setStopState] = useState<"idle" | "stopping" | "stopped">("idle");
   /** 设置中心开关（受控）：介绍页「去配置」通过自定义事件直接打开 */
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** 设置保存计数：自增后问答面板会重拉配置，刷新「联网开关」的可用性 */
+  const [cfgVersion, setCfgVersion] = useState(0);
 
   useEffect(() => {
     const onOpenSettings = () => setSettingsOpen(true);
@@ -190,7 +192,11 @@ export default function App({ onShowIntro }: { onShowIntro?: () => void }) {
             <RefreshCw className="h-3 w-3 shrink-0" />
           </button>
         )}
-        <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+        <SettingsDialog
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          onSaved={() => setCfgVersion((v) => v + 1)}
+        />
         {stopState === "idle" && (
           <Button size="sm" variant="destructive" onClick={onStop} title="停止并关闭所有服务">
             <Power className="h-3.5 w-3.5" />
@@ -294,6 +300,7 @@ export default function App({ onShowIntro }: { onShowIntro?: () => void }) {
                   <ChatPanel
                     key={selected.id}
                     doc={selected}
+                    configVersion={cfgVersion}
                     onSeek={selected.type === "video" ? seek : undefined}
                   />
                 </div>

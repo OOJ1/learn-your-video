@@ -136,6 +136,10 @@ def list_models():
 @app.get("/api/config")
 def read_config():
     s = get_settings()
+    from app.agents.search import web_search_status
+
+    # 联网是否可用由后端唯一判定，前端只负责按结论锁定开关 + 显示原因
+    web_ok, web_why = web_search_status()
     return {
         "app_name": s.APP_NAME,
         "llm_provider": s.LLM_PROVIDER,
@@ -145,6 +149,8 @@ def read_config():
         "search_provider": s.SEARCH_PROVIDER,
         "has_llm_key": bool(s.OPENAI_API_KEY) and not s.OPENAI_API_KEY.startswith("sk-REPLACE"),
         "has_tavily_key": bool(s.TAVILY_API_KEY),
+        "web_search_available": web_ok,
+        "web_search_reason": web_why,
         "video_top_k": s.VIDEO_TOP_K,
         "article_top_k": s.ARTICLE_TOP_K,
         "max_article_chars": s.MAX_ARTICLE_CHARS,

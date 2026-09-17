@@ -1,6 +1,68 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "../lib/utils";
+
+/* ---------------- HoverTip ---------------- */
+/**
+ * 鼠标悬停 / 键盘聚焦时显示说明气泡。
+ *
+ * 为什么不用原生 title：原生 tooltip 有约 1 秒延迟、样式不可控，且在
+ * 「看起来禁用但仍是可聚焦 button」的场景下部分浏览器不弹出。这里用
+ * portal 渲染到 body，避免被父容器的 overflow / backdrop-filter 裁剪。
+ */
+export function HoverTip({
+  content,
+  children,
+  className,
+}: {
+  content: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const [pos, setPos] = React.useState<{ x: number; y: number; above: boolean } | null>(null);
+  const ref = React.useRef<HTMLSpanElement>(null);
+
+  const show = () => {
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    const above = r.top > 72; // 上方空间不足时改到下方
+    setPos({
+      // 左右各留 112px，防止贴边时气泡被切掉
+      x: Math.min(Math.max(r.left + r.width / 2, 112), window.innerWidth - 112),
+      y: above ? r.top - 6 : r.bottom + 6,
+      above,
+    });
+  };
+
+  return (
+    <span
+      ref={ref}
+      className={cn("inline-flex", className)}
+      onMouseEnter={show}
+      onMouseLeave={() => setPos(null)}
+      onFocus={show}
+      onBlur={() => setPos(null)}
+    >
+      {children}
+      {pos &&
+        createPortal(
+          <span
+            role="tooltip"
+            className="pointer-events-none fixed z-[70] w-56 rounded-lg border border-white/10 bg-slate-900/95 px-2.5 py-1.5 text-[11px] leading-relaxed text-slate-100 shadow-xl backdrop-blur"
+            style={{
+              left: pos.x,
+              top: pos.y,
+              transform: `translate(-50%, ${pos.above ? "-100%" : "0"})`,
+            }}
+          >
+            {content}
+          </span>,
+          document.body
+        )}
+    </span>
+  );
+}
 
 /* ---------------- Button ---------------- */
 const buttonVariants = cva(

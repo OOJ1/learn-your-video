@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from dataclasses import asdict, dataclass
 
-from app.agents.search import SearchError, web_search
+from app.agents.search import SearchError, web_search, web_search_status
 from app.config import get_settings
 from app.core.llm import LLMError, chat_json, get_llm
 from app.services.store import get_store
@@ -164,9 +164,9 @@ def _search_query(doc_id: str, question: str) -> str:
 
 def decide_need_web(question: str, context: str) -> tuple[bool, str]:
     """让 LLM 判断本地资料是否足够回答"""
-    s = get_settings()
-    if (s.SEARCH_PROVIDER or "").lower() == "off":
-        return False, "联网搜索已关闭"
+    ok, why = web_search_status()
+    if not ok:
+        return False, why
     prompt = (
         "判断下面【参考资料】是否足以回答【问题】。\n"
         "只有在资料完全没涉及、或明显过时/不完整时才回答 insufficient。\n\n"
@@ -194,15 +194,18 @@ def prepare(doc_id: str, question: str, use_web: str = "auto") -> tuple[list[dic
     context, refs, flags = build_local_context(doc_id, question)
     meta = {"used_web": False, "engine": None, "reason": "", "search_results": 0, **flags}
 
+    # 联网可用性由 web_search_status() 统一判定：设置关闭、或未配 Key 都算不可用。
+    # 前端对应的开关此时也是锁死的（悬停会提示原因），这里再兜一层防止直连 API 绕过。
+    web_ok, web_why = web_search_status()
+
     # 前端三档：off=仅本地（绝不联网）、on=强制联网、auto=由模型判断
     # 注意顺序——先判 use_web=="off"，否则会落进 auto 分支把「仅本地」当智能联网用
     if use_web == "off":
         need = False
         meta["reason"] = "已选择仅用本地资料"
-    elif (get_settings().SEARCH_PROVIDER or "").lower() == "off":
-        # 配置里的 SEARCH_PROVIDER 是总开关：设为 off 时任何前端请求都不联网
+    elif not web_ok:
         need = False
-        meta["reason"] = "联网搜索已关闭（可在右上角设置中心开启）"
+        meta["reason"] = web_why
     elif use_web == "on":
         need = True
     else:

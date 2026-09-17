@@ -72,12 +72,14 @@ npx vite --host 127.0.0.1
 
 ## 5. 可选：联网搜索
 
-不配也能用，只是问答不会联网。DuckDuckGo 在国内不通，需自备 Tavily Key：
+不配也能用，只是问答不会联网 —— 此时问答栏顶部的「智能联网 / 强制联网」会直接置灰（鼠标悬停会提示原因），只保留「仅本地」。想联网需自备 Tavily Key：
 
 1. 打开 <https://tavily.com> 注册（免费 1000 次/月，不用绑卡）
 2. Dashboard 复制形如 `tvly-xxx` 的 Key
 3. 写入 `backend\.env`：`TAVILY_API_KEY=tvly-你的Key`（纯英文数字，不要带引号）
-4. 重启后端生效；`GET http://127.0.0.1:8000/api/config` 中 `has_tavily_key` 应为 `true`
+4. 重启后端生效；`GET http://127.0.0.1:8000/api/config` 中 `has_tavily_key` 应为 `true`、`web_search_available` 应为 `true`
+
+> 设置中心里粘贴的 Key 会先做格式校验（大模型 Key 必须 `sk-` 开头、Tavily Key 必须 `tvly-` 开头），格式不对会标红且保存按钮不可点，避免「保存成功但调用一直 401」。
 
 ## 6. 环境自检
 

@@ -78,7 +78,7 @@ OPENAI_API_KEY=
 EMBED_PROVIDER=local                # local / openai
 ARTICLE_VECTORIZE_MIN_CHARS=8000    # 文章正文超过这个字数才切块向量化（以内整篇直投）
 WHISPER_DEVICE=auto                 # cpu / cuda / auto
-TAVILY_API_KEY=                     # 可选，联网搜索
+TAVILY_API_KEY=                     # 联网搜索（不配 / 关掉则问答栏联网开关整体置灰）
 ```
 
 改完重启后端生效；也可直接在前端右上角「**设置中心**」里修改（内含千问 API 的接入指引）。
@@ -88,4 +88,4 @@ TAVILY_API_KEY=                     # 可选，联网搜索
 - **转写是长视频耗时大头**：CPU 约 0.2× 实时；检测到 CUDA 会自动走 GPU（实测约快 6 倍）
 - **单进程**：无 Redis 时为内存模式，`--workers > 1` 会造成数据不一致
 - **含金量评分**：仅视频提供，且依赖模型主观判断，仅供参考
-- **联网搜索**：需自备 Tavily Key（DuckDuckGo 在国内不可达）
+- **联网搜索**：需自备 Tavily Key。设置里关掉联网、或没配 Key 时，问答栏的「智能联网 / 强制联网」会直接置灰（鼠标悬停可看原因），只能用「仅本地」，不会出现「点了没反应」
