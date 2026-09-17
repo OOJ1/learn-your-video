@@ -8,11 +8,21 @@ import re
 from typing import Iterator
 
 import httpx
-from openai import OpenAI
 
 from app.config import Settings, get_settings
 
 logger = logging.getLogger("app.llm")
+
+
+# 为什么 openai 要延迟导入：
+#   openai SDK 在 import 阶段会递归加载上千个类型模块（openai.types.* 下的
+#   beta / graders / responses ...），实测冷启动 0.87 秒 —— 占整个后端启动
+#   耗时的一半以上。而客户端对象只在真正发请求时才需要，所以挪进函数里按需导入。
+#   代价：第一次问答会多花这 0.87 秒（相对一次几秒的模型调用可以忽略）。
+def _new_openai_client(**kwargs):
+    """按需导入 openai SDK 并构造客户端。"""
+    from openai import OpenAI
+    return OpenAI(**kwargs)
 
 
 class LLMError(RuntimeError):
@@ -59,7 +69,7 @@ class OpenAICompatLLM(BaseLLM):
                 "OPENAI_API_KEY 未正确配置（当前为空、占位符或含非 ASCII 字符）。"
                 "请在 backend/.env 中填入真实的 DeepSeek Key，例如 OPENAI_API_KEY=sk-xxxx"
             )
-        self.client = OpenAI(
+        self.client = _new_openai_client(
             api_key=key,
             base_url=self._base_url,
             timeout=httpx.Timeout(180.0, connect=15.0),

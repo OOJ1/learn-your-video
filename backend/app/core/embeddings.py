@@ -4,10 +4,17 @@ from __future__ import annotations
 from typing import Iterable
 
 import httpx
-from openai import OpenAI
 
 from app.config import Settings, get_settings
 from app.core.hf import ensure_hf_env
+
+
+# openai 延迟导入：它的 import 阶段要加载上千个类型模块（实测冷启动 0.87 秒），
+# 而客户端只在真正嵌入时才需要。详见 app/core/llm.py 中的同款说明。
+def _new_openai_client(**kwargs):
+    """按需导入 openai SDK 并构造客户端。"""
+    from openai import OpenAI
+    return OpenAI(**kwargs)
 
 
 class EmbeddingError(RuntimeError):
@@ -88,8 +95,8 @@ class OpenAICompatEmbedder(BaseEmbedder):
                 f"使用 {provider} embedding 但未配置模型名"
                 f"（{'OLLAMA_EMBED_MODEL' if provider == 'ollama' else 'OPENAI_EMBED_MODEL'}）"
             )
-        self._c = OpenAI(api_key=key, base_url=base, timeout=httpx.Timeout(120.0, connect=15.0),
-                         http_client=httpx.Client(trust_env=trust))
+        self._c = _new_openai_client(api_key=key, base_url=base, timeout=httpx.Timeout(120.0, connect=15.0),
+                                     http_client=httpx.Client(trust_env=trust))
         self.dim = settings.LOCAL_EMBED_DIM
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
